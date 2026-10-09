@@ -60,6 +60,9 @@ assert.equal(initial.questions.length, 12);
 assert.ok(
   initial.questions.every((q) => !("points" in q) && !("explanation" in q)),
 );
+assert.equal(initial.listening.questions.length, 3);
+assert.ok(initial.listening.questions.every((q) => !("points" in q)));
+assert.ok(initial.speaking.customer.ms);
 await call(assessment + "/start", {
   data: { language: "ms", consent: false },
   expected: 400,
@@ -114,12 +117,70 @@ const correct = Object.fromEntries(
   record.assessment.questions.map((q) => [q.id, q.points.indexOf(100)]),
 );
 await call(assessment + "/event", { cookie: candidateCookie, data: {} });
+const listeningKey = Object.fromEntries(
+  record.assessment.listening.questions.map((q) => [
+    q.id,
+    q.points.indexOf(100),
+  ]),
+);
+// Binary voice upload: wrong type rejected, recording stored for the hiring team.
+const upload = (type, bytes, cookieHeader = candidateCookie) =>
+  fetch(origin + assessment + "/audio", {
+    method: "POST",
+    headers: { Cookie: cookieHeader, Origin: origin, "Content-Type": type },
+    body: bytes,
+  });
+assert.equal(
+  (await upload("text/plain", new Uint8Array([1, 2, 3]))).status,
+  415,
+);
+assert.equal(
+  (await upload("audio/webm", new Uint8Array([1, 2, 3]), "")).status,
+  403,
+);
+const stored = await upload("audio/webm", new Uint8Array(2048).fill(7));
+assert.equal(stored.status, 200);
+checks += 3;
+await call(assessment + "/submit", {
+  cookie: candidateCookie,
+  data: {
+    answers: correct,
+    conversation: "",
+    communication: {
+      mode: "voice",
+      listening: { answers: {}, plays: 1 },
+      metrics: {
+        durationSec: 40,
+        units: 90,
+        pace: 135,
+        longPauses: 0,
+        attempts: 1,
+        transcribed: false,
+      },
+    },
+    revision: 1,
+  },
+  expected: 400,
+});
 await call(assessment + "/submit", {
   cookie: candidateCookie,
   data: {
     answers: correct,
     conversation:
       "I understand the delay was frustrating. Could we review the order and delivery requirements? I will check availability and agree a realistic follow-up time.",
+    communication: {
+      mode: "voice",
+      listening: { answers: listeningKey, plays: 1 },
+      metrics: {
+        durationSec: 40,
+        units: 90,
+        pace: 135,
+        longPauses: 0,
+        attempts: 1,
+        transcribed: true,
+      },
+      audio: { id: "server", type: "audio/webm" },
+    },
     revision: 1,
     scores: [1, 1, 1, 1, 1, 1],
   },
@@ -140,8 +201,23 @@ await call("/api/candidates/" + invite.id + "/review", {
     ratings: [3, 4, 3, 4],
     notes:
       "QA rubric review: empathy, clarification and next steps are present.",
+    delivery: { clarity: 4, pace: 10, fluency: 10 },
   },
 });
+const audio = await fetch(origin + "/api/candidates/" + invite.id + "/audio", {
+  headers: { Cookie: cookie },
+});
+assert.equal(audio.status, 200);
+assert.equal(audio.headers.get("content-type"), "audio/webm");
+assert.equal((await audio.arrayBuffer()).byteLength, 2048);
+const foreign = await fetch(
+  origin + "/api/candidates/" + invite.id + "/audio",
+  {
+    headers: { Cookie: otherCookie },
+  },
+);
+assert.equal(foreign.status, 404);
+checks += 2;
 await call("/api/candidates/" + invite.id + "/decision", {
   cookie,
   data: {
@@ -162,9 +238,11 @@ await call("/api/candidates/nonexistent/decision", {
 const exported = await call("/api/export", { cookie, data: {} });
 assert.ok(exported.data.includes("QA Test Candidate"));
 assert.ok(exported.data.includes("100"));
+assert.ok(exported.data.includes("95/100"));
 const { data: demo } = await call("/api/demo");
 assert.ok(demo.questions.every((q) => !("points" in q)));
-assert.equal(demo.questions.length, 12);
+assert.equal(demo.questions.length, 6);
+assert.ok(demo.listening.questions.every((q) => !("points" in q)));
 console.log(
-  `PASS: ${checks} API checks covering automatic workspace isolation, origin protection, invitations, consent, one-use sessions, resume, stale writes, server scoring, reviews, decisions, exports, and demo isolation.`,
+  `PASS: ${checks} API checks covering automatic workspace isolation, origin protection, invitations, consent, one-use sessions, resume, stale writes, server scoring, voice uploads, communication marks, reviews, decisions, exports, and demo isolation.`,
 );

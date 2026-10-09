@@ -1,8 +1,8 @@
 import { database } from "./database.js";
 import {
   DEFAULT_RULES,
-  chooseQuestions,
   scoreAnswers,
+  upgradeSettings,
 } from "../lib/assessment.js";
 import { QUESTIONS } from "../lib/question-bank.js";
 export const db = () => database;
@@ -87,7 +87,7 @@ export async function actor(req: Request, create = false) {
       displayName: "Hiring team",
       email: "Workspace administrator",
     },
-    settings: JSON.parse(workspace.settings),
+    settings: upgradeSettings(JSON.parse(workspace.settings), QUESTIONS),
     setCookie,
   };
 }
@@ -136,6 +136,7 @@ export function candidateView(c: any) {
     review: c.review ? JSON.parse(c.review) : null,
     decision: c.decision ? JSON.parse(c.decision) : null,
     outcomes: JSON.parse(c.outcomes),
+    communication: c.communication ? JSON.parse(c.communication) : null,
     assessment: JSON.parse(snapshot),
   };
 }

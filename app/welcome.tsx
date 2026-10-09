@@ -158,8 +158,9 @@ export function EmployeePortal() {
           </span>
           <h2>Try the assessment</h2>
           <p>
-            Get familiar with the questions, timing and customer conversation.
-            This practice run does not create a candidate record.
+            A short run with sample questions, a listening task and a spoken
+            customer reply. It creates no candidate record, and none of the
+            practice questions appear in the real assessment.
           </p>
           <Button asChild>
             <a href={pageUrl("/assess/demo")}>

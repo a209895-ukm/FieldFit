@@ -49,6 +49,7 @@ export default defineConfig(({ mode }) => ({
         "**/server/**",
         "**/.server/**",
         "**/lib/question-bank.ts",
+        "**/lib/communication-bank.ts",
         "**/db/**",
         "**/scripts/**",
       ],

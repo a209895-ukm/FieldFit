@@ -8,14 +8,34 @@ export const CAPS = [
   "Self-leadership",
   "Digital & data literacy",
 ];
+type Text = Record<Lang, string>;
+/** A chart or mini dashboard shown above a question. Labels are translated; numbers are shared. */
+export type Visual =
+  | {
+      kind: "bar";
+      title: Text;
+      unit?: string;
+      categories: Record<Lang, string[]>;
+      series: { name: Text; values: number[] }[];
+    }
+  | {
+      kind: "dashboard";
+      title: Text;
+      tiles: { label: Text; value: string }[];
+      columns: Record<Lang, string[]>;
+      rows: Record<Lang, string[][]>;
+    };
 export type Question = {
   id: string;
   cap: number;
-  prompt: Record<Lang, string>;
+  prompt: Text;
   options: Record<Lang, string[]>;
   points: number[];
   explanation: string;
   enabled: boolean;
+  /** Bank revision. A stored copy with a lower revision is replaced by the bank version. */
+  rev?: number;
+  visual?: Visual;
 };
 export type Rules = {
   proficient: number;
@@ -28,9 +48,53 @@ export const DEFAULT_RULES: Rules = {
   proficient: 60,
   strong: 80,
   core: [2, 4],
-  minutes: 40,
+  minutes: 20,
   version: 1,
 };
+/**
+ * Brings a workspace's saved question bank up to date with this release:
+ * items the bank has revised replace older stored copies (an administrator's
+ * edits made after this release keep the newer revision), and untouched
+ * default rules move to the new time limit.
+ */
+export function upgradeSettings(
+  settings: { rules: Rules; questions: Question[] },
+  bank: Question[],
+) {
+  const latest = new Map(bank.map((q) => [q.id, q]));
+  const questions = settings.questions.map((q) => {
+    const b = latest.get(q.id);
+    return b && (q.rev ?? 1) < (b.rev ?? 1)
+      ? { ...structuredClone(b), enabled: q.enabled }
+      : q;
+  });
+  const rules =
+    settings.rules.version === 1 && settings.rules.minutes === 40
+      ? { ...settings.rules, minutes: DEFAULT_RULES.minutes }
+      : settings.rules;
+  return { ...settings, rules, questions };
+}
+function shuffled<T>(items: T[], random: () => number) {
+  const list = [...items];
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+/** Reorders a question's answers; options and points move together in every language. */
+export function shuffleOptions(q: Question, random: () => number): Question {
+  const order = shuffled([0, 1, 2, 3], random);
+  return {
+    ...q,
+    options: {
+      en: order.map((i) => q.options.en[i]),
+      ms: order.map((i) => q.options.ms[i]),
+      zh: order.map((i) => q.options.zh[i]),
+    },
+    points: order.map((i) => q.points[i]),
+  };
+}
 export const ROLEPLAY: Record<Lang, string> = {
   en: "Customer: “Your price is higher, and my last delivery was late. Why should I order from you again?” Write your reply, including the questions you would ask and a practical next step. Do not promise an unapproved discount or delivery date.",
   ms: "Pelanggan: “Harga anda lebih tinggi, dan penghantaran terakhir lewat. Mengapa saya patut membeli lagi?” Tulis respons anda, termasuk soalan dan langkah seterusnya. Jangan janji diskaun atau tarikh penghantaran tanpa kelulusan.",
@@ -46,14 +110,14 @@ export function chooseQuestions(
   bank: Question[],
   random = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296,
 ) {
-  return CAPS.flatMap((_, cap) => {
-    const pool = bank.filter((q) => q.cap === cap && q.enabled);
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, 2);
-  });
+  const picked = CAPS.flatMap((_, cap) =>
+    shuffled(
+      bank.filter((q) => q.cap === cap && q.enabled),
+      random,
+    ).slice(0, 2),
+  );
+  // Each invitation gets its own question order and answer order.
+  return shuffled(picked, random).map((q) => shuffleOptions(q, random));
 }
 export function scoreAnswers(
   questions: Question[],

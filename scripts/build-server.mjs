@@ -10,6 +10,8 @@ const files = [
   "server/index.ts",
   "lib/assessment.ts",
   "lib/question-bank.ts",
+  "lib/communication.ts",
+  "lib/communication-bank.ts",
 ];
 for (const file of files) {
   const target = ".server/" + file.replace(/\.ts$/, ".js");

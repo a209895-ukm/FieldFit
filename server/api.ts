@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import {
   actor,
   db,
@@ -20,10 +22,49 @@ import {
   CAPS,
   LANGS,
   RUBRIC,
+  DEFAULT_RULES,
   chooseQuestions,
   csvCell,
 } from "../lib/assessment.js";
 import { QUESTIONS } from "../lib/question-bank.js";
+import {
+  COMMUNICATION_COLUMNS,
+  communicationCells,
+  safeListening,
+} from "../lib/communication.js";
+import {
+  LISTENING,
+  SPEAKING,
+  PRACTICE_LISTENING,
+  PRACTICE_QUESTIONS,
+  PRACTICE_SPEAKING,
+} from "../lib/communication-bank.js";
+const audioDir = resolve(
+  dirname(resolve(process.env.FIELDFIT_DATABASE ?? ".data/fieldfit.sqlite")),
+  "audio",
+);
+const audioFile = (id: string) => resolve(audioDir, id + ".audio");
+const AUDIO_TYPES = ["audio/webm", "audio/mp4", "audio/ogg", "audio/mpeg"];
+const communicationSchema = z.object({
+  mode: z.enum(["voice", "typed"]),
+  listening: z.object({
+    answers: z.record(z.number().int().min(0).max(3)),
+    plays: z.number().int().min(0).max(20),
+  }),
+  metrics: z
+    .object({
+      durationSec: z.number().min(0).max(600),
+      units: z.number().int().min(0).max(5000),
+      pace: z.number().min(0).max(2000).nullable(),
+      longPauses: z.number().int().min(0).max(200),
+      attempts: z.number().int().min(0).max(5),
+      transcribed: z.boolean(),
+    })
+    .optional(),
+  audio: z
+    .object({ id: z.string().max(100), type: z.string().max(80) })
+    .optional(),
+});
 const language = z.enum(["en", "ms", "zh"]);
 const rulesSchema = z
   .object({
@@ -53,6 +94,9 @@ const questionSchema = z.object({
   }),
   points: z.array(z.number().int().min(0).max(100)).length(4),
   explanation: z.string().min(1).max(2000),
+  rev: z.number().int().min(1).max(1000).optional(),
+  // Charts and dashboards are authored in the bank; the editor passes them through unchanged.
+  visual: z.record(z.any()).optional(),
 });
 async function body(req: Request) {
   requireThat(
@@ -91,15 +135,15 @@ export async function handle(req: Request) {
         name: "Preview",
         status: "Invited",
         language: "en",
-        questions: safeQuestions(
-          CAPS.flatMap((_, cap) =>
-            QUESTIONS.filter((q) => q.cap === cap).slice(0, 2),
-          ),
-        ),
-        minutes: 40,
+        practice: true,
+        questions: safeQuestions(PRACTICE_QUESTIONS),
+        listening: safeListening(PRACTICE_LISTENING),
+        speaking: PRACTICE_SPEAKING,
+        minutes: DEFAULT_RULES.minutes,
         started: null,
         answers: {},
         conversation: "",
+        communication: null,
         revision: 0,
       });
     if (method !== "GET") {
@@ -125,13 +169,43 @@ export async function handle(req: Request) {
           status: c.status,
           language: c.language,
           questions: safeQuestions(snap.questions),
+          listening: snap.listening ? safeListening(snap.listening) : null,
+          speaking: snap.speaking ?? null,
           minutes: snap.rules.minutes,
           started: c.started,
           answers: JSON.parse(c.answers),
           conversation: c.conversation,
+          communication: c.communication ? JSON.parse(c.communication) : null,
           revision: c.revision,
           retentionDays: 180,
         });
+      }
+      if (path[2] === "audio") {
+        c = await candidateAccess(raw, req);
+        requireThat(
+          c.status === "In progress",
+          409,
+          "Assessment is already submitted.",
+        );
+        const type = (req.headers.get("content-type") ?? "").split(";")[0];
+        requireThat(
+          AUDIO_TYPES.includes(type),
+          415,
+          "Unsupported audio format.",
+        );
+        const bytes = new Uint8Array(await req.arrayBuffer());
+        requireThat(
+          bytes.length > 0 && bytes.length <= 6_000_000,
+          413,
+          "The recording is too large. Keep your reply under two minutes.",
+        );
+        await mkdir(audioDir, { recursive: true });
+        await writeFile(audioFile(c.id), bytes);
+        await log(c.workspace, "candidate", "recording.saved", c.id, {
+          bytes: bytes.length,
+          type,
+        });
+        return response({ id: "server", type });
       }
       const data = await body(req);
       if (path[2] === "start") {
@@ -186,13 +260,17 @@ export async function handle(req: Request) {
           .object({
             answers: z.record(z.number().int().min(0).max(3)),
             conversation: z.string().max(6000),
+            communication: communicationSchema.nullable().optional(),
             revision: z.number().int().min(0),
           })
           .parse(data);
         requireThat(
           Object.keys(input.answers).every((id) =>
             snap.questions.some((q: any) => q.id === id),
-          ),
+          ) &&
+            Object.keys(input.communication?.listening.answers ?? {}).every(
+              (id) => snap.listening?.questions.some((q: any) => q.id === id),
+            ),
           400,
           "Unknown assessment item.",
         );
@@ -200,17 +278,26 @@ export async function handle(req: Request) {
           requireThat(
             snap.questions.every(
               (q: any) => input.answers[q.id] !== undefined,
-            ) && input.conversation.trim().length >= 20,
+            ) &&
+              (!snap.listening ||
+                snap.listening.questions.every(
+                  (q: any) =>
+                    input.communication?.listening.answers[q.id] !== undefined,
+                )) &&
+              (input.conversation.trim().length >= 20 ||
+                (input.communication?.mode === "voice" &&
+                  (input.communication.metrics?.durationSec ?? 0) >= 10)),
             400,
-            "Complete every question and write at least 20 characters for the conversation.",
+            "Complete every question and give your customer reply before submitting.",
           );
         const saved = await db()
           .prepare(
-            "UPDATE candidates SET answers=?,conversation=?,revision=revision+1 WHERE id=? AND revision=? AND status='In progress'",
+            "UPDATE candidates SET answers=?,conversation=?,communication=?,revision=revision+1 WHERE id=? AND revision=? AND status='In progress'",
           )
           .bind(
             JSON.stringify(input.answers),
             input.conversation,
+            input.communication ? JSON.stringify(input.communication) : null,
             c.id,
             input.revision,
           )
@@ -277,6 +364,8 @@ export async function handle(req: Request) {
       const snapshot = {
         rules: a.settings.rules,
         questions: chooseQuestions(a.settings.questions),
+        listening: LISTENING,
+        speaking: SPEAKING,
       };
       requireThat(
         snapshot.questions.length === 12,
@@ -313,6 +402,29 @@ export async function handle(req: Request) {
     }
     if (path[0] === "candidates" && path[1]) {
       const c = await owned(path[1], a);
+      if (path[2] === "audio" && method === "GET") {
+        let bytes: Uint8Array;
+        try {
+          bytes = await readFile(audioFile(c.id));
+        } catch {
+          throw new HttpError(
+            404,
+            "No recording is stored for this candidate.",
+          );
+        }
+        const comm = c.communication ? JSON.parse(c.communication) : null;
+        return new Response(new Uint8Array(bytes), {
+          headers: {
+            "Content-Type": AUDIO_TYPES.includes(
+              comm?.audio?.type?.split(";")[0],
+            )
+              ? comm.audio.type.split(";")[0]
+              : "audio/webm",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+          },
+        });
+      }
       if (path[2] === "decision" && method === "POST") {
         requireThat(
           c.status === "Completed",
@@ -344,6 +456,13 @@ export async function handle(req: Request) {
           .object({
             ratings: z.array(z.number().int().min(0).max(4)).length(4),
             notes: z.string().trim().min(10).max(4000),
+            delivery: z
+              .object({
+                clarity: z.number().int().min(0).max(4),
+                pace: z.number().int().min(0).max(10),
+                fluency: z.number().int().min(0).max(10),
+              })
+              .optional(),
           })
           .parse(await body(req));
         const review = {
@@ -400,7 +519,7 @@ export async function handle(req: Request) {
         await db().batch([
           db()
             .prepare(
-              "UPDATE candidates SET token_hash=?,session_hash=NULL,status='Invited',started=NULL,consent=NULL,answers='{}',conversation='',revision=0,switches=0,expires=? WHERE id=?",
+              "UPDATE candidates SET token_hash=?,session_hash=NULL,status='Invited',started=NULL,consent=NULL,answers='{}',conversation='',communication=NULL,revision=0,switches=0,expires=? WHERE id=?",
             )
             .bind(
               await hash(raw),
@@ -411,6 +530,7 @@ export async function handle(req: Request) {
             clearedAttempt: true,
           }),
         ]);
+        await rm(audioFile(c.id), { force: true });
         return response({ path: "/assess/" + raw });
       }
     }
@@ -430,6 +550,7 @@ export async function handle(req: Request) {
           "Status",
           ...CAPS,
           "Conversation review",
+          ...COMMUNICATION_COLUMNS,
           "Decision",
           "Reason",
         ]
@@ -447,6 +568,7 @@ export async function handle(req: Request) {
             c.status,
             ...(c.scores.length ? c.scores : Array(6).fill("")),
             c.review?.score ?? "Pending",
+            ...communicationCells(c),
             c.decision?.decision ?? "",
             c.decision?.reason ?? "",
           ]
@@ -507,6 +629,12 @@ export async function handle(req: Request) {
     }
     if (path[0] === "purge" && method === "POST") {
       const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+      const expired = await db()
+        .prepare("SELECT id FROM candidates WHERE workspace=? AND created<?")
+        .bind(workspace, cutoff)
+        .all();
+      for (const row of expired.results)
+        await rm(audioFile(row.id), { force: true });
       const result = await db().batch([
         db()
           .prepare("DELETE FROM candidates WHERE workspace=? AND created<?")

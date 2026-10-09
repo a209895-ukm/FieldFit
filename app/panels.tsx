@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/client-api";
 import { STATIC_DEMO } from "@/lib/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -40,6 +40,12 @@ import {
   RUBRIC,
   LANGS,
 } from "@/lib/assessment";
+import {
+  communicationScore,
+  PACE_NOTE,
+  type CommunicationScore,
+} from "@/lib/communication";
+import { audioUrl, removeAudio } from "@/lib/audio-store";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -146,6 +152,108 @@ export function RadarProfile({ candidates, benchmark }: any) {
     </div>
   );
 }
+function Part({
+  label,
+  value,
+  max,
+  empty,
+}: {
+  label: string;
+  value: number | null;
+  max: number;
+  empty: string;
+}) {
+  return (
+    <div className="comm-part">
+      <span>{label}</span>
+      <div className="score-track">
+        {value !== null && (
+          <span style={{ width: (value / max) * 100 + "%" }} />
+        )}
+      </div>
+      <strong>
+        {value === null ? (
+          <em>{empty}</em>
+        ) : (
+          <>
+            {value}
+            <small>/{max}</small>
+          </>
+        )}
+      </strong>
+    </div>
+  );
+}
+/** Customer communication, kept separate from the six-capability profile. */
+export function CommunicationCard({ score: s }: { score: CommunicationScore }) {
+  return (
+    <section className="comm-card">
+      <header>
+        <div>
+          <span className="eyebrow">CUSTOMER COMMUNICATION</span>
+          <p>Listening · reply content · delivery</p>
+        </div>
+        <div className="comm-total">
+          {s.pending ? (
+            <em>Awaiting review</em>
+          ) : (
+            <>
+              <strong>{s.total}</strong>
+              <small>/{s.max}</small>
+            </>
+          )}
+          <span className="tag">
+            {s.mode === "voice" ? "Spoken reply" : "Typed reply"}
+          </span>
+        </div>
+      </header>
+      {s.listening !== null && (
+        <Part label="Listening" value={s.listening} max={30} empty="—" />
+      )}
+      <Part
+        label="Reply content"
+        value={s.content}
+        max={40}
+        empty="Awaiting review"
+      />
+      {s.mode === "voice" ? (
+        <Part
+          label="Delivery"
+          value={s.delivery}
+          max={30}
+          empty="Awaiting review"
+        />
+      ) : (
+        <div className="comm-part">
+          <span>Delivery</span>
+          <p className="muted">Not scored for typed replies</p>
+        </div>
+      )}
+    </section>
+  );
+}
+function Recording({ candidate }: { candidate: any }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let url: string | null = null;
+    audioUrl(candidate).then((u) => {
+      url = u;
+      setSrc(u);
+    });
+    return () => {
+      if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+    };
+  }, [candidate.id, candidate.communication?.audio?.id]);
+  if (!candidate.communication?.audio)
+    return <p className="muted">No recording was submitted.</p>;
+  return src ? (
+    <audio controls src={src} className="evidence-audio" />
+  ) : (
+    <p className="muted">
+      The recording is stored in the browser where the assessment was taken.
+    </p>
+  );
+}
 export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
   const [tab, setTab] = useState("profile"),
     [decision, setDecision] = useState(c.decision?.decision ?? "Interview"),
@@ -154,6 +262,16 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
       c.review?.ratings ?? [0, 0, 0, 0],
     ),
     [notes, setNotes] = useState(c.review?.notes ?? ""),
+    [delivery, setDelivery] = useState(() => {
+      const s = communicationScore(c);
+      return (
+        c.review?.delivery ?? {
+          clarity: 2,
+          pace: s?.suggested?.pace ?? 5,
+          fluency: s?.suggested?.fluency ?? 5,
+        }
+      );
+    }),
     [month, setMonth] = useState("3"),
     [retained, setRetained] = useState(true),
     [kpi, setKpi] = useState("100"),
@@ -163,10 +281,14 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
   const rules = c.assessment?.rules ?? DEFAULT_RULES;
   const summary = profile(c.scores, rules);
   const sample = c.id.startsWith("demo");
+  const comm = communicationScore(c);
+  const voice = comm?.mode === "voice";
+  const metrics = c.communication?.metrics;
   async function save(action: string, data: any) {
     setBusy(true);
     setError("");
     try {
+      if (action === "reissue") await removeAudio(c);
       const r = await api(`candidates/${c.id}/${action}`, data);
       await onUpdate();
       toast.success("Saved to the candidate record");
@@ -224,10 +346,11 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           ) : (
             <>
               <RadarProfile candidates={[c]} benchmark={benchmark} />
+              {comm && <CommunicationCard score={comm} />}
               <div className="notice">
-                Question scores are provisional. Conversation review is reported
-                separately. Benchmark ranges guide discussion, not pass/fail
-                decisions.
+                Question scores are provisional. Customer communication is
+                reported separately and does not change the profile score.
+                Benchmark ranges guide discussion, not pass/fail decisions.
               </div>
               {summary.map((p) => (
                 <div className="profile-cap" key={p.cap}>
@@ -304,18 +427,73 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               Item responses are unavailable for illustrative profiles.
             </p>
           )}
-          <h3 className="section-title">Customer conversation</h3>
+          {!sample && c.assessment?.listening && c.communication && (
+            <>
+              <h3 className="section-title">Listening</h3>
+              {c.assessment.listening.questions.map((q: any) => {
+                const a = c.communication.listening.answers[q.id];
+                const lang = c.language as keyof typeof LANGS;
+                return (
+                  <div className="evidence-item" key={q.id}>
+                    <small>{q.id}</small>
+                    <p>{q.prompt[lang] ?? q.prompt.en}</p>
+                    <strong>
+                      {a === undefined ? "Unanswered" : q.options[lang]?.[a]}
+                    </strong>
+                    <p className="muted">
+                      {(q.points[a] ?? 0) / 10}/10 · voicemail played{" "}
+                      {c.communication.listening.plays}×
+                    </p>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          <h3 className="section-title">
+            {voice ? "Spoken customer reply" : "Customer conversation"}
+          </h3>
+          {voice && !sample && <Recording candidate={c} />}
+          {voice && metrics && (
+            <div className="metric-row">
+              <span>
+                <strong>{Math.round(metrics.durationSec)} s</strong> length
+              </span>
+              <span>
+                <strong>{metrics.pace ?? "—"}</strong>{" "}
+                {c.language === "zh" ? "characters" : "words"} / min
+              </span>
+              <span>
+                <strong>{metrics.longPauses}</strong> pauses over 3 s
+              </span>
+              <span>
+                <strong>{metrics.attempts}</strong> of 2 attempts
+              </span>
+            </div>
+          )}
           <blockquote>
-            {c.conversation || "No conversation response submitted."}
+            {c.conversation ||
+              (voice
+                ? "No transcript: the candidate's browser could not convert speech to text. Listen to the recording."
+                : "No conversation response submitted.")}
           </blockquote>
-          <p className="muted">
-            Human review · 0 = absent, 1 = weak, 2 = partial, 3 = effective, 4 =
-            clear and specific.
+          {voice && (
+            <p className="muted small">
+              Transcript produced by the candidate's browser and may contain
+              recognition errors. Mark what was said, not how it was
+              transcribed.
+            </p>
+          )}
+          <p className="muted small">
+            Reply content · 0 = absent, 1 = weak, 2 = partial, 3 = effective, 4
+            = clear and specific.
           </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              save("review", { ratings, notes });
+              save(
+                "review",
+                voice ? { ratings, notes, delivery } : { ratings, notes },
+              );
             }}
           >
             {RUBRIC.map((r, i) => (
@@ -331,6 +509,61 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
                 />
               </label>
             ))}
+            {voice && (
+              <div className="delivery-review">
+                <h4>Delivery</h4>
+                <p className="muted">
+                  Listen to the recording. Pace and fluency are suggested from
+                  it (pace band:{" "}
+                  {PACE_NOTE[c.language as keyof typeof LANGS] ?? PACE_NOTE.en};
+                  2 marks off per silence over 3 s). Never mark accent, voice
+                  tone, confidence or minor grammar.
+                </p>
+                <label className="rubric-row">
+                  <span>
+                    Clarity: could a customer follow it the first time? (0–4)
+                  </span>
+                  <Picker
+                    label="Clarity"
+                    value={delivery.clarity}
+                    onChange={(v: string) =>
+                      setDelivery({ ...delivery, clarity: Number(v) })
+                    }
+                    items={["0", "1", "2", "3", "4"]}
+                  />
+                </label>
+                <label className="rubric-row">
+                  <span>
+                    Pace (0–10)
+                    {comm?.suggested?.pace != null &&
+                      ` · suggested ${comm.suggested.pace}`}
+                  </span>
+                  <Picker
+                    label="Pace"
+                    value={delivery.pace}
+                    onChange={(v: string) =>
+                      setDelivery({ ...delivery, pace: Number(v) })
+                    }
+                    items={Array.from({ length: 11 }, (_, i) => String(i))}
+                  />
+                </label>
+                <label className="rubric-row">
+                  <span>
+                    Fluency (0–10)
+                    {comm?.suggested &&
+                      ` · suggested ${comm.suggested.fluency}`}
+                  </span>
+                  <Picker
+                    label="Fluency"
+                    value={delivery.fluency}
+                    onChange={(v: string) =>
+                      setDelivery({ ...delivery, fluency: Number(v) })
+                    }
+                    items={Array.from({ length: 11 }, (_, i) => String(i))}
+                  />
+                </label>
+              </div>
+            )}
             <label className="form-label" htmlFor="review-notes">
               Evidence and reviewer notes
             </label>
@@ -344,12 +577,15 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               placeholder="Quote evidence from the response and explain the rating."
             />
             <Button disabled={sample || busy || c.status !== "Completed"}>
-              Save rubric review
+              Save review
             </Button>
           </form>
           {c.review && (
             <p className="saved-note">
-              Reviewed by {c.review.by} · {c.review.score}/100
+              Reviewed by {c.review.by ?? "the hiring team"}
+              {comm &&
+                !comm.pending &&
+                ` · communication ${comm.total}/${comm.max}`}
             </p>
           )}
         </TabsContent>
@@ -805,9 +1041,10 @@ export function Admin({ workspace: w, onUpdate }: any) {
             </AlertDialogContent>
           </AlertDialog>
           <div className="notice">
-            AI conversation scoring is not connected. The fixed rubric supports
-            a transparent human review. No webcam, demographic attributes, or
-            automated hiring decisions are used.
+            Spoken replies are recorded and transcribed in the candidate's
+            browser; a person marks content and delivery with a fixed rubric. AI
+            scoring is not connected. No webcam, demographic attributes, accent
+            or voice-quality measures, or automated hiring decisions are used.
           </div>
         </TabsContent>
         <TabsContent value="audit">

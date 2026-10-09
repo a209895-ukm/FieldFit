@@ -6,7 +6,7 @@ A web-based candidate assessment MVP for front-line sales teams, with English, B
 
 Open **[FieldFit](https://a209895-ukm.github.io/FieldFit/)** and choose **Employee** or **Employer**. Both are open without login. Use **Switch role** to return to the chooser.
 
-- **Employee:** try the trilingual practice assessment or open an invitation.
+- **Employee:** try the trilingual practice assessment (sample questions only) or open an invitation.
 - **Employer:** explore sample profiles, create demo invitations, review completed assessments, compare candidates and export results.
 
 The GitHub Pages version is an interactive demo. Records are saved in this browser's local storage; invitations work only in the browser that created them. Use fictional details. Clearing site data removes the records. For an end-to-end demo, create an invitation as Employer, open and complete it in the same browser, then return to Employer and select **My candidates**. Separate devices do not share records.
@@ -29,9 +29,9 @@ Open **http://127.0.0.1:5173**. No account, password or external service is requ
 1. Choose **Employer** on the welcome page. A private workspace is created for your browser automatically. Choose **Employee** for practice assessments and invitations.
 2. Explore **Sample data**, or switch to **My candidates** for saved records.
 3. Select **Invite candidate**, enter their details and copy the generated link. Email is not sent automatically.
-4. Open the link in the candidate's browser, choose a language, give consent and complete the assessment. Starting the test claims the invitation for that browser.
-5. Return to the dashboard and refresh. Open the candidate profile to review scores, evidence and interview probes.
-6. Score the written conversation using the fixed rubric, then record your decision and supporting reasons.
+4. Open the link in the candidate's browser, choose a language, give consent and complete the assessment: 12 questions, a listening task and a spoken customer reply. Starting the test claims the invitation for that browser.
+5. Return to the dashboard and refresh. Open the candidate profile to review the six-capability profile, the separate Customer communication card, evidence and interview probes.
+6. Listen to the recording, mark reply content and delivery with the fixed rubric, then record your decision and supporting reasons.
 
 The **Candidates** screen supports comparison of up to three completed profiles and CSV export. **Benchmarks** lets you invite current employees and compare against high-performer reference ranges. **Administration** contains the question bank, scoring rules, retention controls and audit trail.
 
@@ -46,9 +46,23 @@ The development server listens on this computer only. For testing on another dev
 ## Assessment features
 
 - Six capabilities: numerical and analytical skills, logical thinking, situational judgement, problem-solving, self-leadership, and digital/data literacy.
-- An 18-item draft question bank, with two items randomly selected per capability for each invitation.
-- A written customer conversation, scored separately through human rubric review.
-- A server-enforced timer, answer saving between questions, resumable sessions and one-use invitation links.
+- An 18-item draft question bank, with two items randomly selected per capability for each invitation. Question order and answer order are shuffled per invitation; options keep their points in every language.
+- Chart and dashboard questions: candidates read a bar chart or a mini follow-up dashboard to answer (NUM-03, DIG-01, DIG-03).
+- Self-leadership items use a forced-choice format: all four options are reasonable, and only one shows the self-directed behaviour.
+- Capability names are hidden from candidates ("Question 3 of 12") and shown to the hiring team.
+- A separate practice set (6 sample questions, a practice voicemail and a practice customer prompt) that never appears in a real assessment.
+- English, Bahasa Malaysia and 中文, switchable at any point during the test.
+- A 20-minute default time limit (existing workspaces that never changed the default move from 40 to 20).
+
+### Customer communication (reported separately, 100 marks)
+
+| Part | Marks | How it is marked |
+| --- | --- | --- |
+| Listening | 30 | Three questions on a customer voicemail (played at most twice); scored automatically. |
+| Reply content | 40 | The spoken reply is transcribed in the candidate's browser; a reviewer rates four rubric criteria (0–4 each). |
+| Delivery | 30 | Clarity (reviewer, 0–4 → 10), pace (words or characters per minute, suggested from the recording) and fluency (2 marks off per silence over 3 s, suggested). The reviewer confirms after listening. |
+
+Accent, voice tone, "confidence" and minor grammar are never marked. Candidates who cannot speak or hear the task can type their reply instead; typed replies are marked on content only (out of 70) and labelled as typed. The communication score does not change the six-capability profile.
 - Immutable question and scoring snapshots for each invitation.
 - Strengths, trainable development gaps, core risk flags and suggested interview probes.
 - Candidate comparisons, employee benchmark medians/ranges and Excel-compatible CSV exports.
@@ -110,6 +124,10 @@ The API check requires the running development server. It creates fictional QA r
 
 - Questions, translations and thresholds are drafts requiring HR and bilingual review. This is not a validated psychometric instrument.
 - Conversation scoring is human-reviewed; an AI scoring service is not connected.
+- The listening clip is read by the browser's speech synthesis as a placeholder until recorded audio is added (`audio` per language in `lib/communication-bank.ts`). Browsers without a matching voice show the voicemail as text.
+- Live transcription uses the browser's speech recognition (Chrome, Edge, Safari). These browsers may send audio to their speech service. Without it, the recording is still saved and the reviewer listens instead. Firefox cannot transcribe.
+- Voice recordings are covered by the main consent notice. Add a separate voice-recording consent before a real pilot. In the GitHub Pages demo, recordings stay in the browser's IndexedDB; the Node.js version stores them under the database directory (`audio/`), deletes them on reset and purge, and serves them only to the owning workspace.
+- Pace bands (110–170 words per minute; 170–280 Mandarin characters per minute) are starting points to calibrate against benchmark staff.
 - Self-leadership answers are self-report. Tab-change counts and fast completion are review signals, not proof of misconduct. No webcam is used.
 - Benchmark ranges describe the available sample and are not pass/fail cut-offs. Language fairness, reliability and predictive validity require a reviewed pilot dataset.
 - Unanswered items score zero when the server finalizes an expired attempt. A closed browser's attempt is finalized on its next assessment request, rather than by a background scheduler.

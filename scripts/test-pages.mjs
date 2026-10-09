@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createDemoTransport } from "../lib/demo-api.ts";
 import { scoreAnswers } from "../lib/assessment.ts";
+import { QUESTIONS } from "../lib/question-bank.ts";
+import { communicationScore } from "../lib/communication.ts";
 
 const memory = new Map();
 const storage = {
@@ -14,8 +16,13 @@ const post = async (path, input) =>
 const workspace = async () => (await request("/api/workspace")).json();
 assert.equal((await workspace()).candidates.length, 0);
 const practice = await (await request("/api/demo")).json();
-assert.equal(practice.questions.length, 12);
+assert.equal(practice.questions.length, 6);
 assert.equal(practice.questions[0].points, undefined);
+assert.ok(practice.practice);
+assert.ok(
+  practice.questions.every((q) => !QUESTIONS.some((r) => r.id === q.id)),
+);
+assert.ok(practice.listening.questions.every((q) => !("points" in q)));
 const invitation = await (
   await post("candidates", {
     name: "Demo Candidate",
@@ -37,11 +44,33 @@ assert.equal(
 let assessment = await (await request("/api/" + path)).json();
 assert.equal(assessment.language, "ms");
 assert.equal(assessment.status, "In progress");
+assert.equal(assessment.listening.questions.length, 3);
+assert.ok(assessment.listening.questions.every((q) => !("points" in q)));
+assert.ok(assessment.speaking.customer.ms);
 const answers = Object.fromEntries(assessment.questions.map((q) => [q.id, 0]));
+const communication = {
+  mode: "voice",
+  listening: {
+    answers: Object.fromEntries(
+      assessment.listening.questions.map((q) => [q.id, 0]),
+    ),
+    plays: 2,
+  },
+  metrics: {
+    durationSec: 64,
+    units: 140,
+    pace: 131,
+    longPauses: 1,
+    attempts: 1,
+    transcribed: true,
+  },
+  audio: { id: "clip-1", type: "audio/webm" },
+};
 const input = {
   answers,
   conversation:
     "I will check the order details and confirm a realistic next step with you.",
+  communication,
   revision: 0,
 };
 assert.equal((await post(path + "/save", input)).status, 200);
@@ -49,7 +78,18 @@ assert.equal((await post(path + "/save", input)).status, 409);
 const reloaded = createDemoTransport(storage, () => time);
 assessment = await (await reloaded("/api/" + path)).json();
 assert.deepEqual(assessment.answers, answers);
+assert.deepEqual(assessment.communication, communication);
 assert.equal(assessment.revision, 1);
+assert.equal(
+  (
+    await post(path + "/submit", {
+      ...input,
+      communication: { ...communication, listening: { answers: {}, plays: 0 } },
+      revision: 1,
+    })
+  ).status,
+  400,
+);
 assert.equal(
   (
     await post(path + "/submit", {
@@ -79,6 +119,7 @@ assert.equal(
     await post("candidates/" + candidate.id + "/review", {
       ratings: [3, 3, 3, 3],
       notes: "Clear evidence of an honest and practical next step.",
+      delivery: { clarity: 3, pace: 10, fluency: 8 },
     })
   ).status,
   200,
@@ -104,9 +145,17 @@ assert.equal(
 );
 candidate = (await workspace()).candidates[0];
 assert.equal(candidate.review.score, 75);
+const comm = communicationScore(candidate);
+assert.equal(comm.content, 30);
+assert.equal(comm.delivery, 26);
+assert.equal(comm.pending, false);
+assert.equal(comm.total, comm.listening + 56);
 assert.equal(candidate.outcomes[0].salesKpi, 85);
 const exported = await post("export", {});
-assert.match(await exported.text(), /Demo Candidate/);
+const csv = await exported.text();
+assert.match(csv, /Demo Candidate/);
+assert.match(csv, /Listening \/30/);
+assert.match(csv, /Voice/);
 const otherBrowser = createDemoTransport({
   getItem: () => null,
   setItem: () => {},

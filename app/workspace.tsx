@@ -56,6 +56,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Toaster, toast } from "sonner";
 import { CAPS, LANGS, DEFAULT_RULES } from "@/lib/assessment";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
+import { communicationScore } from "@/lib/communication";
+// Illustrative listening key for sample profiles (three questions, 10 marks each).
+const sampleListening = {
+  questions: ["L1", "L2", "L3"].map((id) => ({ id, points: [100, 0, 0, 0] })),
+};
+const voice = (answers: number[], metrics: Record<string, number>) => ({
+  mode: "voice",
+  listening: {
+    answers: { L1: answers[0], L2: answers[1], L3: answers[2] },
+    plays: 1,
+  },
+  metrics: { attempts: 1, transcribed: 1, ...metrics },
+});
 const samples = [
   {
     id: "demo-1",
@@ -64,6 +77,19 @@ const samples = [
     language: "en",
     status: "Completed",
     scores: [88, 74, 91, 80, 85, 92],
+    assessment: { listening: sampleListening },
+    communication: voice([0, 0, 0], {
+      durationSec: 72,
+      units: 158,
+      pace: 132,
+      longPauses: 0,
+    }),
+    conversation:
+      "I'm really sorry the last delivery was late, that must have caused problems for your shop. Can I ask what quantity you need this time and when it must arrive? I'll check stock and the delivery slot with our warehouse today and call you back by 4 p.m. to confirm. On price, let me show you what's included so you can compare like for like.",
+    review: {
+      ratings: [4, 3, 4, 3],
+      delivery: { clarity: 4, pace: 10, fluency: 10 },
+    },
   },
   {
     id: "demo-2",
@@ -72,6 +98,20 @@ const samples = [
     language: "zh",
     status: "Completed",
     scores: [92, 82, 75, 86, 58, 90],
+    assessment: { listening: sampleListening },
+    communication: voice([0, 0, 2], {
+      durationSec: 58,
+      units: 190,
+      pace: 197,
+      longPauses: 2,
+      attempts: 2,
+    }),
+    conversation:
+      "明白，上次迟到确实不好。我们的价格包含送货和售后。我今天会和仓库确认，再回复您送货时间。",
+    review: {
+      ratings: [3, 2, 3, 3],
+      delivery: { clarity: 3, pace: 10, fluency: 6 },
+    },
   },
   {
     id: "demo-3",
@@ -80,6 +120,15 @@ const samples = [
     language: "ms",
     status: "Completed",
     scores: [76, 80, 88, 72, 90, 79],
+    assessment: { listening: sampleListening },
+    communication: voice([0, 0, 0], {
+      durationSec: 81,
+      units: 176,
+      pace: 130,
+      longPauses: 1,
+    }),
+    conversation:
+      "Saya faham, penghantaran lewat memang menyusahkan. Boleh saya tahu berapa kuantiti dan bila puan perlukan barang ini? Saya akan semak stok hari ini dan hubungi puan semula sebelum jam lima untuk sahkan masa penghantaran.",
   },
   {
     id: "demo-4",
@@ -883,6 +932,23 @@ export default function Workspace() {
                     ))}
                 </TableRow>
               ))}
+              <TableRow className="comm-row">
+                <TableCell>Customer communication</TableCell>
+                {candidates
+                  .filter((c) => selected.includes(c.id))
+                  .map((c) => {
+                    const s = communicationScore(c);
+                    return (
+                      <TableCell key={c.id}>
+                        {!s
+                          ? "—"
+                          : s.pending
+                            ? "Awaiting review"
+                            : `${s.total} / ${s.max}`}
+                      </TableCell>
+                    );
+                  })}
+              </TableRow>
             </TableBody>
           </Table>
         </DialogContent>

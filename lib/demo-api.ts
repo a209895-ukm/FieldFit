@@ -6,8 +6,21 @@ import {
   chooseQuestions,
   scoreAnswers,
   csvCell,
+  upgradeSettings,
 } from "./assessment.ts";
 import { QUESTIONS } from "./question-bank.ts";
+import {
+  COMMUNICATION_COLUMNS,
+  communicationCells,
+  safeListening,
+} from "./communication.ts";
+import {
+  LISTENING,
+  SPEAKING,
+  PRACTICE_LISTENING,
+  PRACTICE_QUESTIONS,
+  PRACTICE_SPEAKING,
+} from "./communication-bank.ts";
 
 const KEY = "fieldfit-pages-demo-v1";
 type DemoState = {
@@ -30,16 +43,19 @@ export function createDemoTransport(
 ) {
   function read(): DemoState {
     const raw = storage.getItem(KEY);
-    return raw
-      ? JSON.parse(raw)
-      : {
-          settings: {
-            rules: structuredClone(DEFAULT_RULES),
-            questions: structuredClone(QUESTIONS),
-          },
-          candidates: [],
-          audit: [],
-        };
+    if (raw) {
+      const state: DemoState = JSON.parse(raw);
+      state.settings = upgradeSettings(state.settings, QUESTIONS);
+      return state;
+    }
+    return {
+      settings: {
+        rules: structuredClone(DEFAULT_RULES),
+        questions: structuredClone(QUESTIONS),
+      },
+      candidates: [],
+      audit: [],
+    };
   }
   const iso = () => new Date(clock()).toISOString();
   const json = (data: unknown, status = 200) => Response.json(data, { status });
@@ -69,15 +85,15 @@ export function createDemoTransport(
           name: "Preview",
           status: "Invited",
           language: "en",
-          questions: safeQuestions(
-            CAPS.flatMap((_, cap) =>
-              QUESTIONS.filter((q) => q.cap === cap).slice(0, 2),
-            ),
-          ),
-          minutes: 40,
+          practice: true,
+          questions: safeQuestions(PRACTICE_QUESTIONS),
+          listening: safeListening(PRACTICE_LISTENING),
+          speaking: PRACTICE_SPEAKING,
+          minutes: DEFAULT_RULES.minutes,
           started: null,
           answers: {},
           conversation: "",
+          communication: null,
           revision: 0,
         });
       if (path[0] === "workspace")
@@ -108,6 +124,7 @@ export function createDemoTransport(
           accessToken: token,
           answers: {},
           conversation: "",
+          communication: null,
           scores: [],
           review: null,
           decision: null,
@@ -117,6 +134,8 @@ export function createDemoTransport(
           assessment: {
             questions: chooseQuestions(state.settings.questions),
             rules: structuredClone(state.settings.rules),
+            listening: LISTENING,
+            speaking: SPEAKING,
           },
         };
         state.candidates.unshift(candidate);
@@ -158,10 +177,15 @@ export function createDemoTransport(
             status: candidate.status,
             language: candidate.language,
             questions: safeQuestions(candidate.assessment.questions),
+            listening: candidate.assessment.listening
+              ? safeListening(candidate.assessment.listening)
+              : null,
+            speaking: candidate.assessment.speaking ?? null,
             minutes: candidate.assessment.rules.minutes,
             started: candidate.started,
             answers: candidate.answers,
             conversation: candidate.conversation,
+            communication: candidate.communication ?? null,
             revision: candidate.revision,
           });
         if (path[2] === "start") {
@@ -213,18 +237,42 @@ export function createDemoTransport(
             input.conversation.length > 6000
           )
             return fail("Keep your conversation under 6,000 characters.");
+          const comm = input.communication ?? null;
+          const listening = candidate.assessment.listening;
+          if (
+            comm &&
+            (!["voice", "typed"].includes(comm.mode) ||
+              typeof comm.listening?.answers !== "object" ||
+              Object.entries(comm.listening.answers).some(
+                ([key, value]) =>
+                  !listening?.questions.some((q: any) => q.id === key) ||
+                  !Number.isInteger(value) ||
+                  Number(value) < 0 ||
+                  Number(value) > 3,
+              ))
+          )
+            return fail("Invalid answer.");
           if (
             path[2] === "submit" &&
             (!candidate.assessment.questions.every(
               (q: any) => answers[q.id] !== undefined,
             ) ||
-              input.conversation.trim().length < 20)
+              (listening &&
+                !listening.questions.every(
+                  (q: any) => comm?.listening.answers[q.id] !== undefined,
+                )) ||
+              (input.conversation.trim().length < 20 &&
+                !(
+                  comm?.mode === "voice" &&
+                  (comm.metrics?.durationSec ?? 0) >= 10
+                )))
           )
             return fail(
-              "Complete every question and write at least 20 characters.",
+              "Complete every question and give your customer reply before submitting.",
             );
           candidate.answers = answers;
           candidate.conversation = input.conversation;
+          candidate.communication = comm;
           candidate.revision++;
           if (path[2] === "submit") complete();
           else save();
@@ -247,6 +295,7 @@ export function createDemoTransport(
             started: null,
             answers: {},
             conversation: "",
+            communication: null,
             revision: 0,
             switches: 0,
             expires: new Date(clock() + 7 * 86400000).toISOString(),
@@ -270,6 +319,18 @@ export function createDemoTransport(
             return fail(
               "Complete the four rubric ratings and add evidence notes.",
             );
+          const d = input.delivery;
+          if (
+            d !== undefined &&
+            (![d.clarity, d.pace, d.fluency].every(Number.isInteger) ||
+              d.clarity < 0 ||
+              d.clarity > 4 ||
+              d.pace < 0 ||
+              d.pace > 10 ||
+              d.fluency < 0 ||
+              d.fluency > 10)
+          )
+            return fail("Check the delivery marks.");
           candidate.review = {
             ...input,
             score: Math.round(
@@ -348,6 +409,7 @@ export function createDemoTransport(
             "Status",
             ...CAPS,
             "Conversation review",
+            ...COMMUNICATION_COLUMNS,
             "Decision",
             "Reason",
           ],
@@ -359,6 +421,7 @@ export function createDemoTransport(
             c.status,
             ...(c.scores.length ? c.scores : Array(6).fill("")),
             c.review?.score ?? "Pending",
+            ...communicationCells(c),
             c.decision?.decision ?? "",
             c.decision?.reason ?? "",
           ]),

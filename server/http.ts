@@ -26,9 +26,14 @@ export function apiMiddleware(origin: string) {
       }
       const chunks: Buffer[] = [];
       let bytes = 0;
+      // Voice recordings are binary and larger; every other request is small JSON.
+      const binary =
+        method === "POST" &&
+        /^\/api\/assessment\/[a-f0-9]{64}\/audio$/.test(path);
+      const limit = binary ? 6_000_000 : 150000;
       for await (const chunk of incoming) {
         bytes += chunk.length;
-        if (bytes > 150000) {
+        if (bytes > limit) {
           outgoing.writeHead(413, { "Content-Type": "application/json" });
           outgoing.end(JSON.stringify({ error: "Request is too large." }));
           return;
@@ -39,7 +44,11 @@ export function apiMiddleware(origin: string) {
         method,
         headers,
         ...(method === "POST"
-          ? { body: Buffer.concat(chunks).toString("utf8") }
+          ? {
+              body: binary
+                ? new Uint8Array(Buffer.concat(chunks))
+                : Buffer.concat(chunks).toString("utf8"),
+            }
           : {}),
       });
       const response = await handle(request);
