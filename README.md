@@ -1,79 +1,98 @@
-# FieldFit MVP
+# FieldFit
 
-A private, working pilot for trilingual front-line sales assessment. Built from the supplied FieldFit proposal. This implementation uses React/Vinext and Cloudflare D1 on Sites, following the request to use the easiest stack. It does not require a separately managed Node server or PostgreSQL service.
+A web-based candidate assessment MVP for front-line sales teams, with English, Bahasa Malaysia and Mandarin support.
 
-## What works
+## Quick start
 
-- English, Bahasa Malaysia and Mandarin candidate interface and question translations.
-- 18 draft items across six capabilities; each invitation receives two randomly selected items per capability and one written customer conversation.
-- Consent, a server-enforced timer, resumable answers, tab-change counts and a one-use invitation exchange into an HttpOnly session cookie.
-- Invitation expiry, reset/reissue with confirmation, server-side scoring and immutable assessment/rule snapshots per invitation.
-- Separate strengths, development gaps and core risks with suggested interview probes and training actions.
-- Candidate search, status filters, three-way comparison, radar profiles and Excel-compatible CSV export.
-- Fixed human conversation rubric, recorded hiring decisions and 3-/6-month retention and sales-target follow-ups.
-- Employee benchmark invitations, high-performer medians and min/max ranges.
-- Administrator rules, trilingual question editor, team roles and audit events.
-- Managed persistent storage, workspace isolation and server-side role checks. Sample profiles are illustrative UI data and never populate the database.
+Requires **Node.js 24 or newer**.
 
-## Try it
-
-1. Open the private published site and sign in with ChatGPT. The first sign-in creates your isolated HR workspace.
-2. Explore Sample data, or switch the candidate table to My candidates.
-3. Click Invite candidate, enter a name, email and language, then create the link. FieldFit does not send email; copy and send the link yourself.
-4. Open the link in the candidate browser, choose a language and give consent. Starting consumes the invitation; continue on that browser. Use Reset attempt & create new link if a candidate loses access. Resetting clears that attempt.
-5. Complete the questions and written conversation. Answers save when navigating between questions. Return to the manager workspace and refresh to load new submissions.
-6. Open the profile, review item evidence, score the conversation with the four-part rubric, and record an interview or hiring decision with reasons.
-7. For comparison, use Candidates and select two or three completed profiles. Use CSV to export saved records.
-8. Use Benchmarks to invite high and typical performers. High-performer results form reference ranges. Record follow-ups on candidates whose decision is Hire.
-
-## Pilot boundaries and requirements
-
-- **Private site:** the published site is owner-private by default. The owner must configure intended site access before external candidates or colleagues can open links. A candidate link does not bypass platform access. Candidate links grant only the named assessment session, never the owner's manager data.
-- **AI scoring is not connected.** Conversations require explicit human rubric review and are reported separately from objective capability scores. No fabricated AI scores are used. A production AI adapter needs provider configuration, versioned rubric prompts, structured-output validation, prompt-injection defenses, evaluation against bilingual raters, and human review.
-- All questions, translations, capability tags and thresholds are drafts; HR/company reviewers must approve them. Self-leadership items are self-report and vulnerable to socially desirable responses. This compact item bank is not a validated psychometric instrument.
-- No statistical reliability, language fairness or predictive validity is claimed. Cronbach's alpha, language difficulty comparison and outcome correlations remain pilot analysis tasks after an adequate reviewed dataset exists. Staff ranges are descriptive, never pass/fail gates.
-- The dashboard mean is unweighted and excludes the conversation rubric. Missing objective answers at timeout score zero. The server finalizes saved answers on the next assessment request after expiry; a closed browser is not finalized by a background scheduler.
-- Tab-change signals are client-reported and can be blocked or bypassed. They are context, never proof of misconduct. Fast completion is flagged for review. No webcam or biometric monitoring is used.
-- Candidate records older than 180 days are hidden from manager lists/exports. An administrator can permanently purge expired records and audit events. Automatic purging, backup retention, candidate correction/deletion workflows and company privacy wording must be configured before a real pilot. No legal compliance certification is implied.
-- Team members must be granted platform access separately. New members should join the hiring workspace before independently creating a separate HR workspace.
-- A random small item sample provides limited evidence; different item difficulty has not been calibrated. Benchmark comparisons across rule versions require human interpretation.
-- One written role-play reply is included, rather than a live multi-turn AI customer.
-
-## Run locally
-
-Requires Node 22.13+ (Node 24 tested) and npm. Install with `npm run install:ci`. On Windows if the npm shim fails, use the installed npm JS entrypoint: `node "C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js" run install:ci`.
-
-```
-node node_modules/drizzle-kit/bin.cjs generate
-node scripts/run-framework.mjs build
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_milky_epoch.sql
-node scripts/run-framework.mjs dev
+```sh
+npm install
+npm run dev
 ```
 
-Apply each new migration once and in order. The development server prints its local URL (normally http://127.0.0.1:5173). Local sign-in simulates seedy@sites.test only on loopback, and is excluded from production. The published site uses platform-verified identity headers. No production credentials belong in source or browser code.
+Open **http://127.0.0.1:5173**. No account, password or external service is required. The SQLite database and its tables are created automatically in `.data/fieldfit.sqlite`.
 
-## Verify
+## Using the app
 
+1. Open the dashboard. A private workspace is created for your browser automatically.
+2. Explore **Sample data**, or switch to **My candidates** for saved records.
+3. Select **Invite candidate**, enter their details and copy the generated link. Email is not sent automatically.
+4. Open the link in the candidate's browser, choose a language, give consent and complete the assessment. Starting the test claims the invitation for that browser.
+5. Return to the dashboard and refresh. Open the candidate profile to review scores, evidence and interview probes.
+6. Score the written conversation using the fixed rubric, then record your decision and supporting reasons.
+
+The **Candidates** screen supports comparison of up to three completed profiles and CSV export. **Benchmarks** lets you invite current employees and compare against high-performer reference ranges. **Administration** contains the question bank, scoring rules, retention controls and audit trail.
+
+## Workspace access
+
+There is no login screen. An opaque HttpOnly cookie gives this browser access to its own workspace; only a hash of the cookie is stored in the database. Another browser receives a separate workspace. Candidate invitation links grant access only to the assigned assessment.
+
+Continue using the same browser to access your records. Clearing cookies or switching browsers does not recover the original workspace. Export records you need to keep. Named users, shared team workspaces and cross-device recovery are outside this no-account MVP.
+
+The development server listens on this computer only. For testing on another device, run the production server with an appropriate `HOST` and `PUBLIC_ORIGIN`; use HTTPS for an internet deployment.
+
+## Assessment features
+
+- Six capabilities: numerical and analytical skills, logical thinking, situational judgement, problem-solving, self-leadership, and digital/data literacy.
+- An 18-item draft question bank, with two items randomly selected per capability for each invitation.
+- A written customer conversation, scored separately through human rubric review.
+- A server-enforced timer, answer saving between questions, resumable sessions and one-use invitation links.
+- Immutable question and scoring snapshots for each invitation.
+- Strengths, trainable development gaps, core risk flags and suggested interview probes.
+- Candidate comparisons, employee benchmark medians/ranges and Excel-compatible CSV exports.
+- Recorded decisions, audit events, and 3-/6-month retention and sales-target follow-ups for hires.
+
+## Build and run
+
+```sh
+npm run build
+npm start
 ```
-node node_modules/typescript/bin/tsc --noEmit
-node --experimental-strip-types scripts/test-assessment.mjs
-node scripts/test-api.mjs
-node scripts/run-framework.mjs build
+
+The production server serves both the app and its API at **http://127.0.0.1:5173**.
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `5173` | Server port |
+| `HOST` | `127.0.0.1` | Production listening address |
+| `PUBLIC_ORIGIN` | `http://127.0.0.1:5173` | Exact origin used by the browser; set this when using a domain or another port/host |
+| `FIELDFIT_DATABASE` | `.data/fieldfit.sqlite` | Persistent database path |
+
+Set environment variables in the shell or hosting configuration. No `.env` loader or secret key is required. Keep the database directory on persistent storage and back it up separately from source code. SQL migrations in `db/migrations` are applied once at startup and verified by checksum. Restart the development server after changing backend code.
+
+## Project structure
+
+```text
+app/                 React dashboard and candidate assessment
+components/ui/       Shared interface controls
+server/              HTTP API, workspace access and SQLite adapter
+lib/                 Assessment logic and server-side question bank
+db/migrations/       Versioned SQL schema
+scripts/             Build helpers and automated checks
+public/              Static assets
 ```
 
-The API test requires the local development server and migrated local database. It creates fictional QA records only in that local database. It checks authentication, origin validation, candidate/session isolation, consent, one-use links, answer recovery, stale revisions, score tampering, submission immutability, reviews, decisions and CSV export. The unit test covers question selection, languages, thresholds, profiling and CSV formula protection. The search WebMCP tool was exercised with valid and invalid inputs in the browser.
+The stack is **React, TypeScript, Vite, Node.js and SQLite**. It runs independently of any hosted app builder. Scoring, validation and access control stay on the server; candidate responses never determine their own scores.
 
-## Source map
+## Checks
 
-- `app/workspace.tsx`: manager dashboard, invitations and comparisons.
-- `app/panels.tsx`: profiles, reviews, benchmark and administration screens.
-- `app/assess/[token]/runner.tsx`: trilingual candidate journey.
-- `app/api/[...path]/route.ts`: protected API, validation and actions.
-- `lib/server.ts`: workspace/session authorization, storage and submission.
-- `lib/assessment.ts`: pure scoring and profiling rules.
-- `lib/question-bank.ts`: server-only draft questions and scoring keys.
-- `db/schema.ts`, `drizzle/`: database schema and migrations.
+```sh
+npm run check
+npm test
+npm run test:api
+```
 
-## Company deployment handover
+The API check requires the running development server. It creates fictional QA records in isolated browser workspaces and verifies consent, invitation claims, answer recovery, stale writes, scoring, reviews, exports and workspace isolation. Use a separate `FIELDFIT_DATABASE` when running tests alongside real data.
 
-The source is owned by the project and kept locally as well as in the Sites source repository. To return to the proposal's Node.js + PostgreSQL architecture, retain the React screens and pure scoring module, replace the D1 prepared-statement adapter with a PostgreSQL adapter, port the schema to PostgreSQL, and replace Sites identity headers with company SSO. Keep all authorization and scoring on the server. Deploy only after pilot content review, privacy/retention configuration, access testing, and score validation.
+## Pilot limitations
+
+- Questions, translations and thresholds are drafts requiring HR and bilingual review. This is not a validated psychometric instrument.
+- Conversation scoring is human-reviewed; an AI scoring service is not connected.
+- Self-leadership answers are self-report. Tab-change counts and fast completion are review signals, not proof of misconduct. No webcam is used.
+- Benchmark ranges describe the available sample and are not pass/fail cut-offs. Language fairness, reliability and predictive validity require a reviewed pilot dataset.
+- Unanswered items score zero when the server finalizes an expired attempt. A closed browser's attempt is finalized on its next assessment request, rather than by a background scheduler.
+- Records older than 180 days are hidden from lists and exports. Administrators can purge expired records; automated retention and a formal correction/deletion workflow are not included.
+- Final hiring decisions are made and recorded by a person.
+
+Third-party license notices are retained alongside the dependencies and vendored stylesheet.
