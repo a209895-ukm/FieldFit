@@ -41,7 +41,10 @@ createServer(async (req, res) => {
       exists = (await stat(file)).isFile();
     } catch {}
     if (!exists) {
-      if (path !== "/" && !/^\/assess\/(demo|[a-f0-9]{64})\/?$/.test(path)) {
+      if (
+        !["/", "/employee", "/employer"].includes(path) &&
+        !/^\/assess\/(demo|[a-f0-9]{64})\/?$/.test(path)
+      ) {
         res.writeHead(404);
         res.end();
         return;

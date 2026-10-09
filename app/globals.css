@@ -1,6 +1,263 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "../vendor/shadcn-tailwind-4.13.0.css";
+@source not "../site-assets";
+.welcome-page {
+  min-height: 100vh;
+  background: #f8f9f5;
+}
+.portal-header {
+  max-width: 1200px;
+  margin: auto;
+  padding: 28px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.portal-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #537366;
+  font-size: 12px;
+}
+.portal-main {
+  max-width: 1050px;
+  margin: auto;
+  padding: 36px 32px 32px;
+}
+.portal-intro {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.portal-intro h1 {
+  font-size: clamp(42px, 5.4vw, 64px);
+  font-weight: 650;
+  line-height: 1.1;
+  margin: 18px 0 20px;
+}
+.portal-intro h1 span {
+  color: #29795e;
+}
+.portal-intro p {
+  color: #677b72;
+  font-size: 15px;
+}
+.role-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.role-card {
+  display: flex;
+  flex-direction: column;
+  padding: 30px;
+  border: 1px solid #dce5dd;
+  border-radius: 18px;
+  background: #fff;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.role-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 15px 35px #244f3d12;
+}
+.role-card:focus-visible {
+  outline: 3px solid #459875;
+  outline-offset: 4px;
+}
+.role-icon {
+  display: flex;
+  width: 54px;
+  height: 54px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  background: #edf4ec;
+  color: #287053;
+  margin-bottom: 24px;
+}
+.role-card .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+.role-card h2 {
+  font-size: 32px;
+  font-weight: 600;
+  margin: 7px 0 10px;
+}
+.role-card p {
+  color: #647b70;
+  max-width: 320px;
+}
+.role-card ul {
+  display: grid;
+  gap: 13px;
+  font-size: 12px;
+  margin: 24px 0 30px;
+}
+.role-card li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.role-card li svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.role-cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 19px;
+  border-top: 1px solid #e3eae3;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: auto;
+}
+.employer-card {
+  background: #1e5344;
+  color: #fff;
+  border-color: #1e5344;
+}
+.employer-card .role-icon {
+  background: #ffffff14;
+  color: #d4e9b9;
+}
+.employer-card .eyebrow,
+.employer-card p {
+  color: #bdd5c9;
+}
+.employer-card .role-cta {
+  border-color: #ffffff26;
+  color: #d4e9b9;
+}
+.portal-footnote {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  color: #7a8c7f;
+  font-size: 12px;
+  margin-top: 28px;
+}
+.portal-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 20px auto 0;
+  padding: 24px 40px;
+  border-top: 1px solid #e6ebe2;
+  color: #839086;
+  font-size: 11px;
+}
+.portal-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #377c61;
+  font-size: 12px;
+}
+.portal-switch:hover {
+  text-decoration: underline;
+}
+.employee-main {
+  max-width: 790px;
+  margin: auto;
+  padding: 45px 30px 70px;
+}
+.employee-main > h1 {
+  font-size: clamp(36px, 5vw, 54px);
+  font-weight: 650;
+  line-height: 1.12;
+  margin: 16px 0 24px;
+}
+.employee-main > p {
+  font-size: 16px;
+  color: #687f70;
+  max-width: 600px;
+}
+.employee-start,
+.employee-invitation {
+  border: 1px solid #dce5dd;
+  border-radius: 16px;
+  padding: 28px;
+  margin: 30px 0;
+  background: #fff;
+}
+.employee-main h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.employee-start p,
+.employee-invitation p {
+  color: #687f70;
+  margin-bottom: 20px;
+}
+.employee-invitation label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.employee-invitation form > div {
+  display: flex;
+  gap: 10px;
+}
+.employee-invitation input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+}
+.demo-banner {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  padding: 8px 15px;
+  text-align: center;
+  color: #4a6657;
+  background: #edf2db;
+  font-size: 11px;
+}
+body:has(.demo-banner) [data-slot="sidebar-container"] {
+  top: 32px;
+  height: calc(100svh - 32px);
+}
+@media (max-width: 640px) {
+  .portal-header {
+    padding: 22px;
+  }
+  .portal-main {
+    padding: 20px 20px 30px;
+  }
+  .portal-intro {
+    margin-bottom: 28px;
+  }
+  .role-cards {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  .role-card {
+    padding: 26px;
+  }
+  .portal-footer {
+    padding: 22px;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .employee-main {
+    padding: 28px 20px 50px;
+  }
+  .employee-invitation form > div {
+    flex-direction: column;
+  }
+}
 :root {
   --background: #f8faf9;
   --foreground: #172f31;

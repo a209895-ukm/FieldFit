@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "tsc --noEmit && node scripts/build-server.mjs && vite build",
+    "build:pages": "tsc --noEmit && vite build --mode pages",
+    "prepare:pages": "npm run build:pages && node scripts/prepare-pages.mjs",
+    "test:pages": "node --experimental-strip-types scripts/test-pages.mjs",
     "start": "node .server/server/index.js",
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types scripts/test-assessment.mjs",

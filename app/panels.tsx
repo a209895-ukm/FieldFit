@@ -1,4 +1,5 @@
-"use client";
+import { apiFetch } from "@/lib/client-api";
+import { STATIC_DEMO } from "@/lib/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -49,7 +50,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 export async function api(path: string, data?: any) {
-  const res = await fetch("/api/" + path, {
+  const res = await apiFetch("/api/" + path, {
     method: data === undefined ? "GET" : "POST",
     headers:
       data === undefined ? undefined : { "Content-Type": "application/json" },
@@ -768,11 +769,9 @@ export function Admin({ workspace: w, onUpdate }: any) {
         <TabsContent value="team">
           <h2 className="section-title">Your browser workspace</h2>
           <p className="muted">
-            No account or sign-in is needed. This browser keeps a private
-            workspace key in a cookie. Continue in the same browser to access
-            your candidates. Clearing cookies or using another browser creates a
-            separate workspace; export records you need to keep. Candidate links
-            work independently and do not grant access to this workspace.
+            {STATIC_DEMO
+              ? "No account is needed. Demo records are stored only in this browser. Clearing site data removes them; another browser starts fresh. Demo invitations work only in the browser that created them. Use fictional details."
+              : "No account or sign-in is needed. This browser keeps a private workspace key in a cookie. Continue in the same browser to access your candidates. Clearing cookies or using another browser creates a separate workspace; export records you need to keep. Candidate links work independently and do not grant access to this workspace."}
           </p>
           <h2 className="section-title">Data retention</h2>
           <p className="muted">

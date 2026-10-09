@@ -1,4 +1,5 @@
-"use client";
+import { apiFetch } from "@/lib/client-api";
+import { pageUrl, assessmentUrl, STATIC_DEMO } from "@/lib/navigation";
 import { useState, useEffect } from "react";
 import {
   ArrowUpRight,
@@ -181,7 +182,7 @@ export default function Workspace() {
         kind,
         performance: kind === "employee" ? performance : null,
       });
-      setLink(location.origin + r.path);
+      setLink(assessmentUrl(r.path));
       setMode("live");
       await load();
       toast.success("Invitation link created");
@@ -194,7 +195,7 @@ export default function Workspace() {
   async function exportCsv() {
     setBusy(true);
     try {
-      const r = await fetch("/api/export", {
+      const r = await apiFetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",
@@ -234,7 +235,7 @@ export default function Workspace() {
       <Toaster theme="light" />
       <Sidebar className="ff-sidebar">
         <SidebarHeader>
-          <a className="brand" href="/">
+          <a className="brand" href={pageUrl("/")}>
             <span className="brand-mark">ff</span>FieldFit
             <span className="brand-dot">.</span>
           </a>
@@ -275,7 +276,10 @@ export default function Workspace() {
           </div>
         </SidebarContent>
         <SidebarFooter>
-          <a href="/assess/demo" className="help-link">
+          <a href={pageUrl("/")} className="help-link">
+            <Users size={17} /> Switch role
+          </a>
+          <a href={pageUrl("/assess/demo")} className="help-link">
             <CircleHelp size={17} /> Try the candidate experience
           </a>
           <div className="account">
@@ -650,7 +654,7 @@ export default function Workspace() {
                   </p>
                 </div>
                 <Button asChild>
-                  <a href="/assess/demo">
+                  <a href={pageUrl("/assess/demo")}>
                     Try assessment <ArrowUpRight size={16} />
                   </a>
                 </Button>
@@ -702,7 +706,7 @@ export default function Workspace() {
               </p>
             </div>
             <Button asChild variant="outline">
-              <a href="/assess/demo">
+              <a href={pageUrl("/assess/demo")}>
                 Preview assessment <ArrowUpRight size={16} />
               </a>
             </Button>
@@ -756,9 +760,9 @@ export default function Workspace() {
                 </Button>
               </div>
               <div className="notice">
-                No account is needed. Starting the assessment claims this
-                invitation in that browser. Keep the link private until you
-                share it with the candidate.
+                {STATIC_DEMO
+                  ? "This demo invitation works only in this browser. Open it here, finish the assessment, then return to Employer to review the results."
+                  : "No account is needed. Starting the assessment claims this invitation in that browser. Keep the link private until you share it with the candidate."}
               </div>
             </>
           ) : (
@@ -836,7 +840,7 @@ export default function Workspace() {
               benchmark={benchmark}
               onUpdate={load}
               onLink={(path: string) => {
-                setLink(location.origin + path);
+                setLink(assessmentUrl(path));
                 setDetailId(null);
                 setInvite(true);
               }}

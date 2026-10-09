@@ -1,4 +1,5 @@
-"use client";
+import { apiFetch } from "@/lib/client-api";
+import { pageUrl } from "@/lib/navigation";
 import { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
@@ -189,7 +190,7 @@ export default function Assessment({ token }: { token: string }) {
   const locked = useRef(false);
   const t = copy[lang];
   async function request(action = "", body?: any) {
-    const res = await fetch(
+    const res = await apiFetch(
       demo
         ? "/api/demo"
         : "/api/assessment/" + token + (action ? "/" + action : ""),
@@ -316,7 +317,7 @@ export default function Assessment({ token }: { token: string }) {
   return (
     <div className="assessment-page">
       <header className="assessment-header">
-        <a href="/" className="brand">
+        <a href={pageUrl("/")} className="brand">
           <span className="brand-mark">ff</span>FieldFit
           <span className="brand-dot">.</span>
         </a>
@@ -347,7 +348,7 @@ export default function Assessment({ token }: { token: string }) {
             <p className="muted">{t.close}</p>
             {demo && (
               <Button asChild>
-                <a href="/">Return to workspace</a>
+                <a href={pageUrl("/employee")}>Return to Employee portal</a>
               </Button>
             )}
           </section>

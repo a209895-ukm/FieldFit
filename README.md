@@ -2,6 +2,17 @@
 
 A web-based candidate assessment MVP for front-line sales teams, with English, Bahasa Malaysia and Mandarin support.
 
+## Try it online
+
+Open **[FieldFit](https://a209895-ukm.github.io/FieldFit/)** and choose **Employee** or **Employer**. Both are open without login. Use **Switch role** to return to the chooser.
+
+- **Employee:** try the trilingual practice assessment or open an invitation.
+- **Employer:** explore sample profiles, create demo invitations, review completed assessments, compare candidates and export results.
+
+The GitHub Pages version is an interactive demo. Records are saved in this browser's local storage; invitations work only in the browser that created them. Use fictional details. Clearing site data removes the records. For an end-to-end demo, create an invitation as Employer, open and complete it in the same browser, then return to Employer and select **My candidates**. Separate devices do not share records.
+
+The Node.js version below uses SQLite and supports candidate links across browsers. GitHub Pages does not run that backend.
+
 ## Quick start
 
 Requires **Node.js 24 or newer**.
@@ -15,7 +26,7 @@ Open **http://127.0.0.1:5173**. No account, password or external service is requ
 
 ## Using the app
 
-1. Open the dashboard. A private workspace is created for your browser automatically.
+1. Choose **Employer** on the welcome page. A private workspace is created for your browser automatically. Choose **Employee** for practice assessments and invitations.
 2. Explore **Sample data**, or switch to **My candidates** for saved records.
 3. Select **Invite candidate**, enter their details and copy the generated link. Email is not sent automatically.
 4. Open the link in the candidate's browser, choose a language, give consent and complete the assessment. Starting the test claims the invitation for that browser.
@@ -52,34 +63,44 @@ npm start
 
 The production server serves both the app and its API at **http://127.0.0.1:5173**.
 
-| Environment variable | Default | Purpose |
-| --- | --- | --- |
-| `PORT` | `5173` | Server port |
-| `HOST` | `127.0.0.1` | Production listening address |
-| `PUBLIC_ORIGIN` | `http://127.0.0.1:5173` | Exact origin used by the browser; set this when using a domain or another port/host |
-| `FIELDFIT_DATABASE` | `.data/fieldfit.sqlite` | Persistent database path |
+| Environment variable | Default                 | Purpose                                                                             |
+| -------------------- | ----------------------- | ----------------------------------------------------------------------------------- |
+| `PORT`               | `5173`                  | Server port                                                                         |
+| `HOST`               | `127.0.0.1`             | Production listening address                                                        |
+| `PUBLIC_ORIGIN`      | `http://127.0.0.1:5173` | Exact origin used by the browser; set this when using a domain or another port/host |
+| `FIELDFIT_DATABASE`  | `.data/fieldfit.sqlite` | Persistent database path                                                            |
 
 Set environment variables in the shell or hosting configuration. No `.env` loader or secret key is required. Keep the database directory on persistent storage and back it up separately from source code. SQL migrations in `db/migrations` are applied once at startup and verified by checksum. Restart the development server after changing backend code.
 
 ## Project structure
 
 ```text
-app/                 React dashboard and candidate assessment
+app/                 Source HTML entry, role chooser, dashboard and assessment
 components/ui/       Shared interface controls
 server/              HTTP API, workspace access and SQLite adapter
-lib/                 Assessment logic and server-side question bank
+lib/                 Assessment logic, question bank and browser demo adapter
 db/migrations/       Versioned SQL schema
 scripts/             Build helpers and automated checks
 public/              Static assets
+site-assets/         Generated GitHub Pages JavaScript and CSS
 ```
 
-The stack is **React, TypeScript, Vite, Node.js and SQLite**. It runs independently of any hosted app builder. Scoring, validation and access control stay on the server; candidate responses never determine their own scores.
+The stack is **React, TypeScript, Vite, Node.js and SQLite**. In the Node.js version, scoring, validation and access control stay on the server; candidate responses never determine their own scores. The public Pages demo runs entirely in the browser and is for exploration, not controlled assessments.
+
+## Updating GitHub Pages
+
+```sh
+npm run prepare:pages
+```
+
+Commit the source changes together with the generated root `index.html`, `favicon.svg`, `.nojekyll` and `site-assets/`, then push to `main`. The repository's existing Pages configuration publishes from `main` at `/`. The editable HTML source is `app/index.html`; the root HTML is generated. The build uses `/FieldFit/` as its base and hash routes so both portals and invitation links work on refresh. `npm run build` still produces the separate Node.js application in `dist/client`.
 
 ## Checks
 
 ```sh
 npm run check
 npm test
+npm run test:pages
 npm run test:api
 ```
 
