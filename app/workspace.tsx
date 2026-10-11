@@ -54,9 +54,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Toaster, toast } from "sonner";
-import { CAPS, LANGS, DEFAULT_RULES } from "@/lib/assessment";
+import { CAPS, LANGS, DEFAULT_RULES, csvCell } from "@/lib/assessment";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
-import { communicationScore } from "@/lib/communication";
+import {
+  communicationScore,
+  communicationCells,
+  COMMUNICATION_COLUMNS,
+} from "@/lib/communication";
 // Illustrative listening key for sample profiles (three questions, 10 marks each).
 const sampleListening = {
   questions: ["L1", "L2", "L3"].map((id) => ({ id, points: [100, 0, 0, 0] })),
@@ -244,20 +248,76 @@ export default function Workspace() {
   async function exportCsv() {
     setBusy(true);
     try {
-      const r = await apiFetch("/api/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      if (!r.ok) throw Error(((await r.json()) as any).error);
-      const url = URL.createObjectURL(await r.blob());
+      const sample = mode === "sample";
+      let file: Blob;
+      if (sample) {
+        const rows = [
+          [
+            "Name",
+            "Email",
+            "Type",
+            "Language",
+            "Status",
+            ...CAPS,
+            "Conversation review",
+            ...COMMUNICATION_COLUMNS,
+            "Decision",
+            "Reason",
+            "Data source",
+          ],
+          ...samples.map((c) => [
+            c.name,
+            c.email,
+            "candidate",
+            LANGS[c.language as keyof typeof LANGS],
+            c.status,
+            ...(c.scores.length ? c.scores : Array(6).fill("")),
+            c.review
+              ? Math.round(
+                  (c.review.ratings.reduce((a, b) => a + b, 0) / 16) * 100,
+                )
+              : "Pending",
+            ...communicationCells(c),
+            "",
+            "",
+            "Illustrative sample",
+          ]),
+        ];
+        file = new Blob(
+          [
+            "\uFEFF" +
+              rows.map((row) => row.map(csvCell).join(",")).join("\r\n"),
+          ],
+          { type: "text/csv;charset=utf-8" },
+        );
+      } else {
+        const r = await apiFetch("/api/export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        if (!r.ok) throw Error(((await r.json()) as any).error);
+        file = await r.blob();
+      }
+      const url = URL.createObjectURL(file);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "fieldfit-candidates.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-      toast.success("CSV exported");
-      await load();
+      a.download = sample
+        ? "fieldfit-sample-candidates.csv"
+        : "fieldfit-candidates.csv";
+      a.hidden = true;
+      document.body.appendChild(a);
+      try {
+        a.click();
+      } finally {
+        a.remove();
+        // Keep the object URL alive while the browser starts the download.
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+      toast.success(
+        sample ? "Sample CSV download started" : "CSV download started",
+      );
+      if (!sample) await load();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -450,10 +510,19 @@ export default function Workspace() {
                         </Button>
                         <Button
                           variant="outline"
-                          disabled={mode === "sample" || !workspace || busy}
+                          disabled={
+                            busy ||
+                            (mode === "live" &&
+                              (!workspace || !candidates.length))
+                          }
+                          title={
+                            mode === "sample"
+                              ? "Download all illustrative sample candidates"
+                              : "Download all saved candidates"
+                          }
                           onClick={exportCsv}
                         >
-                          <Download size={14} /> CSV
+                          <Download size={14} /> Download CSV
                         </Button>
                       </div>
                     )}
