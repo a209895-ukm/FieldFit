@@ -1,3 +1,4 @@
+import { CandidateNextStep } from "../../approvals";
 import { apiFetch } from "@/lib/client-api";
 import { pageUrl } from "@/lib/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -552,7 +553,12 @@ export default function Assessment({ token }: { token: string }) {
             <div className="eyebrow">FIELDFIT</div>
             <h1>{t.done}</h1>
             <p>{demo ? t.sampledone : t.thanks}</p>
-            {!demo && <p className="next-steps">{t.nextSteps}</p>}
+            {!demo && (
+              <>
+                <p className="next-steps">{t.nextSteps}</p>
+                <CandidateNextStep token={token} />
+              </>
+            )}
             <p className="muted">{t.close}</p>
             {demo && (
               <Button asChild>

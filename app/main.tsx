@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { Toaster } from "sonner";
 import Workspace from "./workspace";
 import Assessment from "./assess/[token]/runner";
 import { Welcome, EmployeePortal } from "./welcome";
@@ -19,6 +20,7 @@ function App() {
   const assessment = path.match(/^\/assess\/(demo|[a-f0-9]{64})\/?$/);
   return (
     <>
+      <Toaster theme="light" />
       {STATIC_DEMO && path !== "/" && (
         <div className="demo-banner">
           Interactive demo · Records stay in this browser. Use fictional

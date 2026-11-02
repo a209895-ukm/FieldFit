@@ -35,6 +35,20 @@ Open **http://127.0.0.1:5173**. No account, password or external service is requ
 
 The **Candidates** screen supports comparison of up to three completed profiles and CSV export. **Benchmarks** lets you invite current employees and compare against high-performer reference ranges. **Administration** contains the question bank, scoring rules, retention controls and audit trail.
 
+## Approval and interview prototype
+
+Open **Employer → Approvals**. Use Sample data for a client walkthrough or My candidates for completed demo assessments.
+
+- **HR approval:** select individual candidates or Select all, then prepare second-interview invitations together.
+- **Automatic:** configure an HR email and future interview slots first. Eligible completed profiles receive a browser-local invitation when the workspace is open; the Pages candidate completion screen also applies these rules immediately after submission.
+- The editable defaults are an average of at least **75**, no section below **40**, and a highest–lowest section gap of at most **40**. Exceptions override the average and go to **Needs HR review**. HR must record a rationale to invite an exception. Employee benchmarks and candidates with another final decision are excluded.
+- **Candidate preview** opens the booking popup. Candidates choose a slot; overlapping bookings are blocked within this browser. Confirmed bookings offer a Google Calendar draft including HR and the candidate as guests. Save and send the event in Google Calendar to invite the other party.
+- Sample candidate **Mei Wong** demonstrates an 83 average with a 25 section score that still requires HR review.
+
+This is a client prototype: rules, invitations and bookings live in local storage, separately for sample and live data. The immediate candidate next step works with the same-browser GitHub Pages demo. No OAuth connection, Google free/busy lookup, automatic email, shared cross-device booking, background automation or backend scheduling persistence is implemented. Google Meet links must be supplied by HR. Customer communication remains a separate human review; the routing average uses only the six capability scores. Existing invitations retain their original slots and are not revoked when thresholds change.
+
+Run `node --experimental-strip-types scripts/test-approval.mjs` for routing and Calendar draft checks.
+
 ## Workspace access
 
 There is no login screen. An opaque HttpOnly cookie gives this browser access to its own workspace; only a hash of the cookie is stored in the database. Another browser receives a separate workspace. Candidate invitation links grant access only to the assigned assessment.
@@ -56,13 +70,14 @@ The development server listens on this computer only. For testing on another dev
 
 ### Customer communication (reported separately, 100 marks)
 
-| Part | Marks | How it is marked |
-| --- | --- | --- |
-| Listening | 30 | Three questions on a customer voicemail (played at most twice); scored automatically. |
-| Reply content | 40 | The spoken reply is transcribed in the candidate's browser; a reviewer rates four rubric criteria (0–4 each). |
-| Delivery | 30 | Clarity (reviewer, 0–4 → 10), pace (words or characters per minute, suggested from the recording) and fluency (2 marks off per silence over 3 s, suggested). The reviewer confirms after listening. |
+| Part          | Marks | How it is marked                                                                                                                                                                                    |
+| ------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listening     | 30    | Three questions on a customer voicemail (played at most twice); scored automatically.                                                                                                               |
+| Reply content | 40    | The spoken reply is transcribed in the candidate's browser; a reviewer rates four rubric criteria (0–4 each).                                                                                       |
+| Delivery      | 30    | Clarity (reviewer, 0–4 → 10), pace (words or characters per minute, suggested from the recording) and fluency (2 marks off per silence over 3 s, suggested). The reviewer confirms after listening. |
 
 Accent, voice tone, "confidence" and minor grammar are never marked. Candidates who cannot speak or hear the task can type their reply instead; typed replies are marked on content only (out of 70) and labelled as typed. The communication score does not change the six-capability profile.
+
 - Immutable question and scoring snapshots for each invitation.
 - Strengths, trainable development gaps, core risk flags and suggested interview probes.
 - Candidate comparisons, employee benchmark medians/ranges and Excel-compatible CSV exports.

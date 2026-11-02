@@ -1,3 +1,4 @@
+import { Approvals } from "./approvals";
 import { apiFetch } from "@/lib/client-api";
 import { pageUrl, assessmentUrl, STATIC_DEMO } from "@/lib/navigation";
 import { useState, useEffect } from "react";
@@ -17,6 +18,7 @@ import {
   CheckCircle2,
   Copy,
   RefreshCw,
+  CalendarDays,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,7 +55,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 import { CAPS, LANGS, DEFAULT_RULES, csvCell } from "@/lib/assessment";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
 import {
@@ -135,6 +137,14 @@ const samples = [
       "Saya faham, penghantaran lewat memang menyusahkan. Boleh saya tahu berapa kuantiti dan bila puan perlukan barang ini? Saya akan semak stok hari ini dan hubungi puan semula sebelum jam lima untuk sahkan masa penghantaran.",
   },
   {
+    id: "demo-exception",
+    name: "Mei Wong",
+    email: "mei@example.test",
+    language: "en",
+    status: "Completed",
+    scores: [98, 94, 92, 95, 25, 96],
+  },
+  {
     id: "demo-4",
     name: "Daniel Lim",
     email: "daniel@example.test",
@@ -185,6 +195,11 @@ export default function Workspace() {
   }
   useEffect(() => {
     load(true);
+    const sync = (event: StorageEvent) => {
+      if (STATIC_DEMO && event.key === "fieldfit-pages-demo-v1") load();
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
   }, []);
   const candidates: any[] =
     mode === "sample" ? samples : (workspace?.candidates ?? []);
@@ -335,13 +350,13 @@ export default function Workspace() {
   const titles: Record<string, string> = {
     Overview: "Your next great hire starts here.",
     Candidates: "Potential, with evidence to back it.",
+    Approvals: "From potential to a conversation.",
     Assessments: "Built for the realities of the field.",
     Benchmarks: "Your team sets the reference.",
     Administration: "One standard. Clearly defined.",
   };
   return (
     <SidebarProvider>
-      <Toaster theme="light" />
       <Sidebar className="ff-sidebar">
         <SidebarHeader>
           <a className="brand" href={pageUrl("/")}>
@@ -358,6 +373,7 @@ export default function Workspace() {
             {[
               [BarChart3, "Overview"],
               [Users, "Candidates"],
+              [CalendarDays, "Approvals"],
               [ClipboardList, "Assessments"],
               [Layers3, "Benchmarks"],
               [Settings2, "Administration"],
@@ -451,6 +467,30 @@ export default function Workspace() {
               </Button>
             </div>
           )}
+          {view === "Approvals" && (
+            <Approvals
+              key={mode}
+              candidates={candidates}
+              sample={mode === "sample"}
+              onProfile={setDetailId}
+            />
+          )}
+          {view === "Approvals" && (
+            <div className="approval-data-source">
+              <Picker
+                label="Approval data source"
+                value={mode}
+                onChange={setMode}
+                items={[
+                  ["sample", "Sample data"],
+                  ["live", "My candidates"],
+                ]}
+              />
+              <Button variant="outline" onClick={() => load()}>
+                <RefreshCw size={14} /> Refresh results
+              </Button>
+            </div>
+          )}
           {["Overview", "Candidates"].includes(view) && (
             <>
               <div className="stats">
@@ -491,6 +531,12 @@ export default function Workspace() {
                     <div>
                       <h2>Candidate pipeline</h2>
                       <p>One consistent view of every candidate.</p>
+                      <button
+                        className="text-link"
+                        onClick={() => setView("Approvals")}
+                      >
+                        Manage approvals & interviews →
+                      </button>
                     </div>
                     {view === "Overview" ? (
                       <Button
