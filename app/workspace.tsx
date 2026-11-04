@@ -161,7 +161,9 @@ const samples = [
     scores: [],
   },
 ];
+import { advanceGuide, useGuide } from "./demo-guide-state";
 export default function Workspace() {
+  const guide = useGuide();
   const [view, setView] = useState("HR journey"),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("All statuses"),
@@ -181,6 +183,30 @@ export default function Workspace() {
     [selected, setSelected] = useState<string[]>([]),
     [compare, setCompare] = useState(false),
     [inviteError, setInviteError] = useState("");
+  useEffect(() => {
+    if (!guide) return;
+    if (
+      ["rules", "availability", "automatic", "invite", "form", "open"].includes(
+        guide.step,
+      )
+    ) {
+      setView("HR journey");
+      setMode("live");
+    }
+    if (guide.step === "rules") setInvite(false);
+    if (guide.step === "form") {
+      setKind("candidate");
+      setName("Alex Morgan");
+      setEmail("alex@example.test");
+      setLanguage("en");
+      setLink("");
+      setInvite(true);
+    }
+    if (guide.step === "open" && guide.path) {
+      setLink(assessmentUrl(guide.path));
+      setInvite(true);
+    }
+  }, [guide]);
   async function load(initial = false) {
     try {
       setError("");
@@ -237,6 +263,7 @@ export default function Workspace() {
     setLink("");
     setInviteError("");
     setInvite(true);
+    advanceGuide("invite");
   }
   async function createInvite(e: React.FormEvent) {
     e.preventDefault();
@@ -251,6 +278,7 @@ export default function Workspace() {
         performance: kind === "employee" ? performance : null,
       });
       setLink(assessmentUrl(r.path));
+      advanceGuide("form", r.path);
       setMode("live");
       await load();
       toast.success("Invitation link created");
@@ -883,7 +911,7 @@ export default function Workspace() {
         </main>
       </div>
       <Dialog open={invite} onOpenChange={setInvite}>
-        <DialogContent>
+        <DialogContent className={guide ? "demo-guide-dialog" : undefined}>
           <DialogHeader>
             <DialogTitle>
               {link
@@ -919,7 +947,13 @@ export default function Workspace() {
                   Copy link
                 </Button>
                 <Button variant="outline" asChild>
-                  <a href={link} target="_blank" rel="noreferrer">
+                  <a
+                    data-guide="open-assessment"
+                    href={link}
+                    target={guide ? "_self" : "_blank"}
+                    rel="noreferrer"
+                    onClick={() => advanceGuide("open")}
+                  >
                     Open assessment <ArrowUpRight size={15} />
                   </a>
                 </Button>
@@ -931,7 +965,7 @@ export default function Workspace() {
               </div>
             </>
           ) : (
-            <form onSubmit={createInvite}>
+            <form data-guide="invite-form" onSubmit={createInvite}>
               <label className="form-label">
                 Full name
                 <input
@@ -988,6 +1022,7 @@ export default function Workspace() {
               )}
             </form>
           )}
+          {guide && <div data-guide-host />}
         </DialogContent>
       </Dialog>
       <Sheet open={!!detailId} onOpenChange={(v) => !v && setDetailId(null)}>

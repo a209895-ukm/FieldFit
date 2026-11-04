@@ -1,3 +1,4 @@
+import { advanceGuide, useGuide } from "./demo-guide-state";
 import { useState, useEffect } from "react";
 import {
   ArrowRight,
@@ -28,13 +29,14 @@ export function CandidateOutcome({
   candidate: JourneyCandidate;
   sample?: boolean;
 }) {
+  const guide = useGuide();
   const candidates = useDemoCandidates();
   const [state, update] = useJourney(sample, sample ? undefined : candidates);
   const [chosen, setChosen] = useState("");
   const invite = state.invites[c.id],
     review = state.reviews[c.id],
     decision = state.decisions[c.id];
-  const [booking, setBooking] = useState(false);
+  const [booking, setBooking] = useState(guide?.step === "slots");
   const stage = invite?.booked ? 5 : invite && booking ? 4 : 3;
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -45,8 +47,10 @@ export function CandidateOutcome({
   const mutate = (action: Parameters<typeof update>[0]) => {
     try {
       update(action);
+      return true;
     } catch (error: any) {
       toast.error(error.message);
+      return false;
     }
   };
   return (
@@ -143,12 +147,19 @@ export function CandidateOutcome({
               {invite.location}
             </span>
           </div>
-          <Button className="primary-button" onClick={() => setBooking(true)}>
+          <Button
+            data-guide="progression"
+            className="primary-button"
+            onClick={() => {
+              setBooking(true);
+              advanceGuide("progression");
+            }}
+          >
             Choose my interview time <ArrowRight size={17} />
           </Button>
         </section>
       ) : !booked ? (
-        <section className="journey-booking">
+        <section data-guide="slots" className="journey-booking">
           <div>
             <span className="eyebrow">STEP 05 · BOOK INTERVIEW</span>
             <h1>A time that works for you.</h1>
@@ -221,7 +232,10 @@ export function CandidateOutcome({
             </Button>
             <Button
               disabled={!chosen || !slotAvailable(state, c.id, chosen)}
-              onClick={() => mutate((s) => bookInterview(s, c.id, chosen))}
+              onClick={() => {
+                if (mutate((s) => bookInterview(s, c.id, chosen)))
+                  advanceGuide("slots");
+              }}
             >
               Confirm interview time <ArrowRight size={16} />
             </Button>
@@ -272,19 +286,23 @@ export function CandidateOutcome({
           {!invite.attendedAt && (
             <div className="journey-actions">
               <Button
+                data-guide="attendance"
                 disabled={!!invite.confirmedAt}
-                onClick={() =>
-                  mutate((s) => ({
-                    ...s,
-                    invites: {
-                      ...s.invites,
-                      [c.id]: {
-                        ...s.invites[c.id],
-                        confirmedAt: new Date().toISOString(),
+                onClick={() => {
+                  if (
+                    mutate((s) => ({
+                      ...s,
+                      invites: {
+                        ...s.invites,
+                        [c.id]: {
+                          ...s.invites[c.id],
+                          confirmedAt: new Date().toISOString(),
+                        },
                       },
-                    },
-                  }))
-                }
+                    }))
+                  )
+                    advanceGuide("attendance");
+                }}
               >
                 {invite.confirmedAt
                   ? "Attendance confirmed"
@@ -292,6 +310,7 @@ export function CandidateOutcome({
               </Button>
               <Button asChild variant="outline">
                 <a
+                  data-guide="calendar"
                   href={googleCalendarUrl(c, invite)}
                   target="_blank"
                   rel="noreferrer"
@@ -342,7 +361,7 @@ export function WalkthroughResults({
 }) {
   if (!STATIC_DEMO || token === "demo") return null;
   return (
-    <details className="journey-demo-tools">
+    <details data-guide="demo-result" className="journey-demo-tools">
       <summary>Demo controls · preview an assessment outcome</summary>
       <p>
         Skip to a labelled sample result to walk through the next steps. This
@@ -363,6 +382,7 @@ export function WalkthroughResults({
               try {
                 previewResult(token, id);
                 onComplete();
+                if (id === "pass") advanceGuide("result");
               } catch (e: any) {
                 toast.error(e.message);
               }

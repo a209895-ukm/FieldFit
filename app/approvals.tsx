@@ -33,6 +33,7 @@ import { useJourney } from "./journey-state";
 import { JourneySteps } from "./journey-steps";
 import { CandidateOutcome } from "./candidate-journey";
 import { toast } from "sonner";
+import { advanceGuide, useGuide } from "./demo-guide-state";
 export { CandidateNextStep } from "./candidate-journey";
 const STAGE_COPY = [
   ["Set the rules", "Define a clear standard before you invite candidates."],
@@ -66,6 +67,7 @@ export function Approvals({
   onInvite: () => void;
   sourceControl?: ReactNode;
 }) {
+  const guide = useGuide();
   const [state, update] = useJourney(sample, candidates);
   const [stage, setStage] = useState(0),
     [filter, setFilter] = useState("all"),
@@ -82,6 +84,10 @@ export function Approvals({
   useEffect(() => {
     window.scrollTo({ top: 0 });
   }, [stage]);
+  useEffect(() => {
+    if (guide?.step === "rules") setStage(0);
+    if (guide && ["invite", "form", "open"].includes(guide.step)) setStage(1);
+  }, [guide]);
   const mutate = (edit: (s: JourneyState) => JourneyState) => {
     try {
       update(edit);
@@ -197,7 +203,8 @@ export function Approvals({
       d.setHours(i % 2 ? 14 : 10, 0, 0, 0);
       return d.toISOString();
     });
-    patch({ slots, host: state.host || "hr@example.test" });
+    if (patch({ slots, host: state.host || "hr@example.test" }))
+      advanceGuide("availability");
     toast.success("Six demo interview slots added.");
   }
   const stageDone = [
@@ -264,11 +271,16 @@ export function Approvals({
                 {[false, true].map((auto) => (
                   <button
                     key={String(auto)}
+                    data-guide={auto ? "automatic" : undefined}
                     aria-pressed={state.rules.automatic === auto}
                     className={state.rules.automatic === auto ? "selected" : ""}
-                    onClick={() =>
-                      patch({ rules: { ...state.rules, automatic: auto } })
-                    }
+                    onClick={() => {
+                      if (
+                        patch({ rules: { ...state.rules, automatic: auto } }) &&
+                        auto
+                      )
+                        advanceGuide("automatic");
+                    }}
                   >
                     <strong>
                       {auto ? "Automatic progression" : "Manual HR approval"}
@@ -281,7 +293,7 @@ export function Approvals({
                   </button>
                 ))}
               </div>
-              <div className="journey-form-grid">
+              <div className="journey-form-grid" data-guide="rules">
                 {(
                   [
                     ["benchmark", "Pass benchmark"],
@@ -430,6 +442,7 @@ export function Approvals({
               <Button
                 className="journey-text-button"
                 variant="ghost"
+                data-guide="availability"
                 onClick={demoSlots}
               >
                 Use demo availability
@@ -456,7 +469,7 @@ export function Approvals({
                 experience.
               </p>
             </div>
-            <Button onClick={onInvite}>
+            <Button data-guide="invite" onClick={onInvite}>
               <Mail size={17} /> Invite candidate
             </Button>
           </div>

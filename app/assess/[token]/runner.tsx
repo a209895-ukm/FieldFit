@@ -1,3 +1,4 @@
+import { advanceGuide, useGuide } from "../../demo-guide-state";
 import { CandidateNextStep, WalkthroughResults } from "../../candidate-journey";
 import { JourneySteps } from "../../journey-steps";
 import { CANDIDATE_STEPS } from "@/lib/journey";
@@ -290,8 +291,9 @@ const emptyComm = (mode: "voice" | "typed"): Communication => ({
   listening: { answers: {}, plays: 0 },
 });
 export default function Assessment({ token }: { token: string }) {
+  const guide = useGuide();
   const demo = token === "demo";
-  const [prepared, setPrepared] = useState(false);
+  const [prepared, setPrepared] = useState(guide?.step === "prepare");
   const [data, setData] = useState<any>(null),
     [lang, setLang] = useState<Lang>("en"),
     [consent, setConsent] = useState(false),
@@ -421,6 +423,7 @@ export default function Assessment({ token }: { token: string }) {
       else {
         await request("start", { language: lang, consent });
         await load();
+        advanceGuide("prepare");
       }
     } catch (e: any) {
       setError(e.message);
@@ -621,7 +624,14 @@ export default function Assessment({ token }: { token: string }) {
                 interview time if invited.
               </span>
             </div>
-            <Button className="wide" onClick={() => setPrepared(true)}>
+            <Button
+              data-guide="accept"
+              className="wide"
+              onClick={() => {
+                setPrepared(true);
+                advanceGuide("accept");
+              }}
+            >
               Accept invitation & get ready
               <ArrowRight size={16} />
             </Button>
@@ -630,7 +640,7 @@ export default function Assessment({ token }: { token: string }) {
             </a>
           </section>
         ) : data?.status === "Invited" ? (
-          <section className="welcome-card">
+          <section data-guide="prepare" className="welcome-card">
             <div className="eyebrow">
               {t.name}, {demo ? "future field professional" : data.name}
             </div>
@@ -706,7 +716,7 @@ export default function Assessment({ token }: { token: string }) {
                   </div>
                 </div>
               </div>
-              <section className="question-card">
+              <section data-guide="question" className="question-card">
                 {q ? (
                   <>
                     <div className="eyebrow">

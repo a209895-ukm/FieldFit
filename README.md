@@ -125,6 +125,15 @@ The stack is **React, TypeScript, Vite, Node.js and SQLite**. In the Node.js ver
 
 ## Updating GitHub Pages
 
+The public demo has a **Start guide** button for the 4–5 minute client walkthrough.
+It highlights HR rules and availability, creates a fictional Alex Morgan invitation,
+then follows the candidate through preparation, a labelled Strong profile result,
+booking, attendance confirmation and the Google Calendar draft explanation.
+The tour advances on successful actions and keeps the candidate link in the same tab.
+Progress is stored per tab for refresh recovery. Minimize, restart or exit at any time
+(Escape also exits); existing candidate records are retained when restarting.
+The guide is frontend-only and appears only in the Pages demo.
+
 ```sh
 npm run prepare:pages
 ```

@@ -6,6 +6,7 @@ import Assessment from "./assess/[token]/runner";
 import { Welcome, EmployeePortal } from "./welcome";
 import { currentRoute, pageUrl, STATIC_DEMO } from "@/lib/navigation";
 import "./globals.css";
+import { DemoGuide } from "./demo-guide";
 
 function App() {
   const [path, setPath] = useState(currentRoute);
@@ -21,6 +22,7 @@ function App() {
   return (
     <>
       <Toaster theme="light" />
+      {STATIC_DEMO && <DemoGuide path={path} />}
       {STATIC_DEMO && path !== "/" && (
         <div className="demo-banner">
           Interactive demo · Records stay in this browser. Use fictional
@@ -44,4 +46,8 @@ function App() {
     </>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+// Reuse the root during Vite updates so portal-based guides aren't left behind.
+const root =
+  import.meta.hot?.data.root ?? createRoot(document.getElementById("root")!);
+if (import.meta.hot) import.meta.hot.data.root = root;
+root.render(<App />);
