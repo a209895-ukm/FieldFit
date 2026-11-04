@@ -1,4 +1,6 @@
-import { CandidateNextStep } from "../../approvals";
+import { CandidateNextStep, WalkthroughResults } from "../../candidate-journey";
+import { JourneySteps } from "../../journey-steps";
+import { CANDIDATE_STEPS } from "@/lib/journey";
 import { apiFetch } from "@/lib/client-api";
 import { pageUrl } from "@/lib/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -289,6 +291,7 @@ const emptyComm = (mode: "voice" | "typed"): Communication => ({
 });
 export default function Assessment({ token }: { token: string }) {
   const demo = token === "demo";
+  const [prepared, setPrepared] = useState(false);
   const [data, setData] = useState<any>(null),
     [lang, setLang] = useState<Lang>("en"),
     [consent, setConsent] = useState(false),
@@ -533,8 +536,31 @@ export default function Assessment({ token }: { token: string }) {
           <ShieldCheck size={16} /> {t.draft}
         </span>
       </header>
-      <main className="assessment-main" lang={lang}>
+      <main
+        className={
+          data?.status === "Completed" && !demo
+            ? "assessment-main journey-completion-main"
+            : "assessment-main"
+        }
+        lang={lang}
+      >
+        {!demo && data && data.status !== "Completed" && (
+          <JourneySteps
+            steps={CANDIDATE_STEPS}
+            active={data.status === "Invited" ? (prepared ? 1 : 0) : 2}
+            complete={
+              data.status === "Invited" ? (prepared ? [0] : []) : [0, 1]
+            }
+          />
+        )}
         {demo && <div className="notice">{t.demo}</div>}
+        {!demo && data?.status === "In progress" && (
+          <WalkthroughResults
+            token={token}
+            onComplete={() => setData({ ...data, status: "Completed" })}
+          />
+        )}
+
         {error && (
           <div className="error" role="alert">
             {error}{" "}
@@ -547,6 +573,8 @@ export default function Assessment({ token }: { token: string }) {
         )}
         {!data && !error ? (
           <p>Loading / Memuatkan / 加载中…</p>
+        ) : data?.status === "Completed" && !demo ? (
+          <CandidateNextStep token={token} />
         ) : data?.status === "Completed" ? (
           <section className="complete-card">
             <CheckCircle2 size={52} />
@@ -565,6 +593,41 @@ export default function Assessment({ token }: { token: string }) {
                 <a href={pageUrl("/employee")}>Return to Employee portal</a>
               </Button>
             )}
+          </section>
+        ) : data?.status === "Invited" && !demo && !prepared ? (
+          <section className="welcome-card journey-invitation">
+            <span className="journey-tag">ASSESSMENT INVITATION</span>
+            <h1>{data.name}, you’re invited.</h1>
+            <p>
+              The hiring team would like to learn how you think, solve problems
+              and connect with customers.
+            </p>
+            <div className="journey-ticket">
+              <CheckCircle2 />
+              <div>
+                <strong>Sales representative assessment</strong>
+                <span>
+                  {total} questions · listening & customer communication
+                </span>
+                <span>
+                  {data.minutes} minutes · English, Bahasa Malaysia or Mandarin
+                </span>
+              </div>
+            </div>
+            <div className="journey-info">
+              <ShieldCheck />
+              <span>
+                Complete the assessment, receive your next step and choose an
+                interview time if invited.
+              </span>
+            </div>
+            <Button className="wide" onClick={() => setPrepared(true)}>
+              Accept invitation & get ready
+              <ArrowRight size={16} />
+            </Button>
+            <a className="journey-return" href={pageUrl("/employee")}>
+              Back to candidate home
+            </a>
           </section>
         ) : data?.status === "Invited" ? (
           <section className="welcome-card">

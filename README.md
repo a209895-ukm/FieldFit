@@ -35,19 +35,26 @@ Open **http://127.0.0.1:5173**. No account, password or external service is requ
 
 The **Candidates** screen supports comparison of up to three completed profiles and CSV export. **Benchmarks** lets you invite current employees and compare against high-performer reference ranges. **Administration** contains the question bank, scoring rules, retention controls and audit trail.
 
-## Approval and interview prototype
+## Guided frontend journeys
 
-Open **Employer → Approvals**. Use Sample data for a client walkthrough or My candidates for completed demo assessments.
+The demo follows the candidate and HR workflow diagrams. Everything in these journeys runs in the browser; no backend or Google account setup is needed.
 
-- **HR approval:** select individual candidates or Select all, then prepare second-interview invitations together.
-- **Automatic:** configure an HR email and future interview slots first. Eligible completed profiles receive a browser-local invitation when the workspace is open; the Pages candidate completion screen also applies these rules immediately after submission.
-- The editable defaults are an average of at least **75**, no section below **40**, and a highest–lowest section gap of at most **40**. Exceptions override the average and go to **Needs HR review**. HR must record a rationale to invite an exception. Employee benchmarks and candidates with another final decision are excluded.
-- **Candidate preview** opens the booking popup. Candidates choose a slot; overlapping bookings are blocked within this browser. Confirmed bookings offer a Google Calendar draft including HR and the candidate as guests. Save and send the event in Google Calendar to invite the other party.
-- Sample candidate **Mei Wong** demonstrates an 83 average with a 25 section score that still requires HR review.
+**Candidate journey:** Open invitation → Get ready → Take assessment → Receive next step → Book interview → Attend interview. The candidate home lists invitations and applications. Candidates can create a fictional demo invitation, choose a language and consent, then complete the assessment. After starting, the labelled **Demo controls** can fast-forward to a strong profile, uneven scores or a below-benchmark result. These are marked as walkthrough results and do not score the entered answers.
 
-This is a client prototype: rules, invitations and bookings live in local storage, separately for sample and live data. The immediate candidate next step works with the same-browser GitHub Pages demo. No OAuth connection, Google free/busy lookup, automatic email, shared cross-device booking, background automation or backend scheduling persistence is implemented. Google Meet links must be supplied by HR. Customer communication remains a separate human review; the routing average uses only the six capability scores. Existing invitations retain their original slots and are not revoked when thresholds change.
+**HR journey:** Set the rules → Invite candidates → Review results → Schedule interview → Interview & decide. This is the default HR landing screen. Switch between **My candidates** and **Sample profiles** using the selector above the steps.
 
-Run `node --experimental-strip-types scripts/test-approval.mjs` for routing and Calendar draft checks.
+- Set manual or automatic progression, benchmark, minimum section score and maximum score gap. Defaults remain **75 / 40 / 40**. Exceptions take precedence over the average. Communication remains separately reviewed.
+- Use **Use demo availability** to create six future slots and a fictional HR email, or enter availability manually. **Preview Google Calendar** is a labelled UI simulation and does not connect an account.
+- Invite candidates and open their personal journey. Candidate and HR tabs share updates in the same browser.
+- Review capability evidence, select one or select all, and invite eligible candidates. Hold or decline progression with a reason. Automatic routing never overrides an HR hold or decline. Exceptions need a reason to approve.
+- Candidates choose an available slot and confirm attendance. HR sees booked and confirmed states. If all slots are unavailable, candidates can request more times; HR can refresh offered slots from setup.
+- HR marks an interview complete, then records Hire, Hold or Reject with supporting notes. The candidate sees the corresponding application update.
+
+The Google Calendar button opens a real event draft for review and saving. No emails, calendar connections or Google availability checks run automatically. Rules, invitations, reviews, attendance and journey decisions are local demo records, separate from any backend records. Existing approval data is preserved. Actual question answers and the usual scoring flow continue to work alongside the optional walkthrough shortcuts.
+
+For a quick walkthrough: choose HR → Set the rules → Use demo availability → Automatic progression; create an invitation, open it in another tab, start the assessment and use **Strong profile**. Book and confirm attendance, then return to HR → Interview & decide. Use **Uneven scores** with a second invitation to test hold, manual review and approval.
+
+Checks: `node --experimental-strip-types scripts/test-approval.mjs` and `node --experimental-strip-types scripts/test-journey.mjs`.
 
 ## Workspace access
 

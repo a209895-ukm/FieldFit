@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
+  ArrowRight,
+  ArrowLeft,
+  Mail,
   CalendarDays,
   CheckCircle2,
-  ArrowRight,
-  Zap,
   ShieldCheck,
+  Clock3,
+  Search,
+  Zap,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,424 +20,547 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { CAPS } from "@/lib/assessment";
+import { approvalOutcome } from "@/lib/approval";
 import {
-  APPROVAL_DEFAULTS,
-  approvalOutcome,
-  googleCalendarUrl,
-  type ApprovalRules,
-  type ApprovalCandidate,
-  type InterviewInvite,
-} from "@/lib/approval";
+  HR_STEPS,
+  approveCandidates,
+  hasAvailability,
+  type JourneyCandidate,
+  type JourneyState,
+} from "@/lib/journey";
+import { pageUrl } from "@/lib/navigation";
+import { useJourney } from "./journey-state";
+import { JourneySteps } from "./journey-steps";
+import { CandidateOutcome } from "./candidate-journey";
 import { toast } from "sonner";
-
-type State = {
-  rules: ApprovalRules;
-  invites: Record<string, InterviewInvite>;
-  host: string;
-  location: string;
-  duration: number;
-  slots: string[];
-};
-const blank: State = {
-  rules: APPROVAL_DEFAULTS,
-  invites: {},
-  host: "",
-  location: "Google Meet · link to be added by HR",
-  duration: 30,
-  slots: [],
-};
+export { CandidateNextStep } from "./candidate-journey";
+const STAGE_COPY = [
+  ["Set the rules", "Define a clear standard before you invite candidates."],
+  [
+    "Invite candidates",
+    "Every candidate starts with a personal assessment invitation.",
+  ],
+  [
+    "Review results",
+    "Move clear passes forward. Give exceptions an individual review.",
+  ],
+  [
+    "Schedule interview",
+    "Candidates choose their time. Keep every interview in view.",
+  ],
+  [
+    "Interview & decide",
+    "Bring the evidence into the conversation, then record your decision.",
+  ],
+];
 export function Approvals({
   candidates,
   sample,
   onProfile,
+  onInvite,
+  sourceControl,
 }: {
-  candidates: ApprovalCandidate[];
+  candidates: JourneyCandidate[];
   sample: boolean;
   onProfile: (id: string) => void;
+  onInvite: () => void;
+  sourceControl?: ReactNode;
 }) {
-  const key = "fieldfit-approvals-v1-" + (sample ? "sample" : "live");
-  const [state, setState] = useState<State>(blank);
-  const [ready, setReady] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  const [tab, setTab] = useState("passed");
-  const [search, setSearch] = useState("");
-  const [preview, setPreview] = useState<string | null>(null);
-  const [send, setSend] = useState(false);
-  const [reason, setReason] = useState("");
-  const [slot, setSlot] = useState("");
-  const [chosen, setChosen] = useState("");
+  const [state, update] = useJourney(sample, candidates);
+  const [stage, setStage] = useState(0),
+    [filter, setFilter] = useState("all"),
+    [search, setSearch] = useState(""),
+    [selected, setSelected] = useState<string[]>([]),
+    [slot, setSlot] = useState("");
+  const [action, setAction] = useState<
+      "invite" | "hold" | "decline" | "decision" | null
+    >(null),
+    [reason, setReason] = useState(""),
+    [final, setFinal] = useState<"Hire" | "Hold" | "Reject">("Hire");
+  const [preview, setPreview] = useState<JourneyCandidate | null>(null),
+    [calendar, setCalendar] = useState(false);
   useEffect(() => {
-    setReady(false);
+    window.scrollTo({ top: 0 });
+  }, [stage]);
+  const mutate = (edit: (s: JourneyState) => JourneyState) => {
     try {
-      const saved = localStorage.getItem(key);
-      setState(saved ? JSON.parse(saved) : structuredClone(blank));
-    } catch {
-      setState(structuredClone(blank));
+      update(edit);
+      return true;
+    } catch (e: any) {
+      toast.error(e.message);
+      return false;
     }
-    setSelected([]);
-    setReady(true);
-  }, [key]);
-  useEffect(() => {
-    const sync = (event: StorageEvent) => {
-      if (event.key !== key || !event.newValue) return;
-      try {
-        setState(JSON.parse(event.newValue));
-      } catch {
-        toast.error("Could not refresh interview bookings. Reload this page.");
-      }
-    };
-    window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
-  }, [key]);
-  useEffect(() => {
-    if (!ready) return;
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch {
-      toast.error("Browser storage is unavailable. Changes cannot be saved.");
-    }
-  }, [state, key, ready]);
-  const eligible = candidates.filter(
-    (c) => c.kind !== "employee" && c.status === "Completed",
-  );
-  const outcome = (c: ApprovalCandidate) => approvalOutcome(c, state.rules);
-  const validSetup =
-    /^\S+@\S+\.\S+$/.test(state.host) &&
-    state.slots.some((s) => Date.parse(s) > Date.now());
-  const makeInvite = (
-    c: ApprovalCandidate,
-    source: "Automatic" | "HR",
-  ): InterviewInvite => ({
-    candidateId: c.id,
-    slots: state.slots.filter((s) => Date.parse(s) > Date.now()),
-    duration: state.duration,
-    host: state.host,
-    location: state.location,
-    source,
-    created: new Date().toISOString(),
-  });
-  // This browser demo processes eligible profiles whenever results or routing settings change.
-  useEffect(() => {
-    if (!ready || !state.rules.automatic || !validSetup) return;
-    const next = { ...state.invites };
-    let changed = false;
-    for (const c of eligible)
-      if (outcome(c).route === "passed" && !next[c.id]) {
-        next[c.id] = makeInvite(c, "Automatic");
-        changed = true;
-      }
-    if (changed) setState((s) => ({ ...s, invites: next }));
-  }, [
-    ready,
-    state.rules,
-    state.slots,
-    state.host,
-    state.duration,
-    state.location,
-    candidates,
-  ]);
-  const counts = {
-    passed: eligible.filter(
-      (c) => outcome(c).route === "passed" && !state.invites[c.id],
-    ).length,
-    review: eligible.filter(
-      (c) => outcome(c).route === "review" && !state.invites[c.id],
-    ).length,
-    invited: eligible.filter((c) => state.invites[c.id]).length,
   };
-  const visible = eligible.filter(
+  const patch = (value: Partial<JourneyState>) =>
+    mutate((s) => ({ ...s, ...value }));
+  const people = candidates.filter((c) => c.kind !== "employee");
+  const completed = people.filter((c) => c.status === "Completed");
+  const pending = completed.filter(
     (c) =>
-      (c.name + c.email).toLowerCase().includes(search.toLowerCase()) &&
-      (tab === "invited"
-        ? !!state.invites[c.id]
-        : !state.invites[c.id] && outcome(c).route === tab),
+      !state.invites[c.id] &&
+      !state.decisions[c.id] &&
+      approvalOutcome(c, state.rules).route !== "closed",
   );
-  const previewCandidate = candidates.find((c) => c.id === preview);
-  const previewInvite = preview ? state.invites[preview] : undefined;
-  const update = (patch: Partial<State>) =>
-    setState((s) => ({ ...s, ...patch }));
-  const updateRules = (patch: Partial<ApprovalRules>) =>
-    update({ rules: { ...state.rules, ...patch } });
-  const selectedCandidates = eligible.filter(
-    (c) => selected.includes(c.id) && !state.invites[c.id],
+  const passed = pending.filter(
+    (c) =>
+      approvalOutcome(c, state.rules).route === "passed" &&
+      !state.reviews[c.id],
   );
-  const needsReason = selectedCandidates.some(
-    (c) => outcome(c).route === "review",
+  const exceptions = pending.filter(
+    (c) =>
+      approvalOutcome(c, state.rules).route === "review" &&
+      !state.reviews[c.id],
   );
-  function prepare() {
-    if (!validSetup) {
-      toast.error(
-        "Add an HR email and at least one future interview slot first.",
-      );
-      return;
-    }
-    const invites = { ...state.invites };
-    for (const c of selectedCandidates)
-      invites[c.id] = {
-        ...makeInvite(c, "HR"),
-        reason: needsReason ? reason.trim() : undefined,
-      };
-    update({ invites });
-    setSend(false);
-    setSelected([]);
-    setReason("");
-    setTab("invited");
-    toast.success(
-      `${selectedCandidates.length} demo invitation(s) prepared. Preview the candidate experience below.`,
+  const held = pending.filter((c) => !!state.reviews[c.id]);
+  const invited = people.filter((c) => state.invites[c.id]);
+  const booked = invited.filter((c) => state.invites[c.id].booked);
+  const visible = (
+    filter === "passed"
+      ? passed
+      : filter === "review"
+        ? exceptions
+        : filter === "held"
+          ? held
+          : pending
+  ).filter((c) =>
+    (c.name + " " + c.email).toLowerCase().includes(search.toLowerCase()),
+  );
+  const targets = people.filter((c) => selected.includes(c.id));
+  const needsReason =
+    action !== "invite" ||
+    targets.some(
+      (c) =>
+        approvalOutcome(c, state.rules).route === "review" ||
+        state.reviews[c.id],
     );
+  const ready = hasAvailability(state);
+  function openAction(kind: typeof action, ids: string[]) {
+    setSelected(ids);
+    setReason("");
+    setAction(kind);
   }
+  function applyAction() {
+    if (!targets.length) return;
+    const ok = mutate((s) => {
+      if (action === "invite") return approveCandidates(s, targets, reason);
+      if (reason.trim().length < 10)
+        throw Error("Please record a reason of at least 10 characters.");
+      if (action === "decision") {
+        const c = targets[0];
+        if (!s.invites[c.id]?.attendedAt)
+          throw Error(
+            "Mark the interview complete before recording a decision.",
+          );
+        return {
+          ...s,
+          decisions: {
+            ...s.decisions,
+            [c.id]: {
+              decision: final,
+              reason: reason.trim(),
+              at: new Date().toISOString(),
+            },
+          },
+        };
+      }
+      if (action === "hold" || action === "decline") {
+        const reviews = { ...s.reviews };
+        for (const c of targets) {
+          if (s.invites[c.id] || s.decisions[c.id])
+            throw Error(
+              "This candidate has already progressed. Refresh the results before reviewing again.",
+            );
+          reviews[c.id] = {
+            action,
+            reason: reason.trim(),
+            at: new Date().toISOString(),
+          };
+        }
+        return { ...s, reviews };
+      }
+      return s;
+    });
+    if (ok) {
+      setAction(null);
+      setSelected([]);
+      toast.success(
+        action === "invite"
+          ? "Interview invitation ready in the candidate journey."
+          : "HR update saved to the demo.",
+      );
+    }
+  }
+  function demoSlots() {
+    const slots = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + 1 + Math.floor(i / 2));
+      d.setHours(i % 2 ? 14 : 10, 0, 0, 0);
+      return d.toISOString();
+    });
+    patch({ slots, host: state.host || "hr@example.test" });
+    toast.success("Six demo interview slots added.");
+  }
+  const stageDone = [
+    ...(ready ? [0] : []),
+    ...(people.length ? [1] : []),
+    ...(invited.length || held.length ? [2] : []),
+    ...(booked.length ? [3] : []),
+    ...(Object.keys(state.decisions).length ? [4] : []),
+  ];
+  const bottom = (
+    <div className="journey-stage-footer">
+      <Button
+        variant="outline"
+        disabled={stage === 0}
+        onClick={() => setStage(stage - 1)}
+      >
+        <ArrowLeft size={16} /> Previous step
+      </Button>
+      <span>Step {stage + 1} of 5</span>
+      <Button disabled={stage === 4} onClick={() => setStage(stage + 1)}>
+        Next: {HR_STEPS[stage + 1]}
+        <ArrowRight size={16} />
+      </Button>
+    </div>
+  );
   return (
-    <div className="approval-page">
-      <div className="approval-intro">
+    <div className="hr-journey">
+      <div className="journey-toolbar">
+        <span className="journey-tag">
+          <ShieldCheck size={14} />{" "}
+          {sample ? "Sample walkthrough" : "My candidates"}
+        </span>
+        {sourceControl}
+      </div>
+      <JourneySteps
+        steps={HR_STEPS}
+        active={stage}
+        onStep={(i) => {
+          setStage(i);
+          setSelected([]);
+        }}
+        complete={stageDone}
+      />
+      <div className="journey-stage-heading">
         <div>
-          <div className="eyebrow">
-            ASSESSMENT → APPROVAL → SECOND INTERVIEW
-          </div>
-          <h2>Keep great candidates moving.</h2>
-          <p>
-            Approve in a few clicks. Let clear passes move forward. Give
-            exceptions a closer look.
-          </p>
+          <span className="eyebrow">
+            HR JOURNEY · STEP {String(stage + 1).padStart(2, "0")}
+          </span>
+          <h2>{STAGE_COPY[stage][0]}</h2>
+          <p>{STAGE_COPY[stage][1]}</p>
         </div>
-        <span className="approval-pill">
-          <ShieldCheck size={16} /> HR stays in control
+        <span className="journey-tag">
+          {state.rules.automatic ? "Automatic progression" : "HR approval"}
         </span>
       </div>
-      <div className="approval-notice">
-        <strong>Client prototype</strong> · Invitations and bookings are saved
-        in this browser. Email delivery, shared calendar availability and Google
-        account connections are not connected. Google Calendar opens a real
-        event draft for you to review and save.
-      </div>
-      <div className="approval-config">
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>
-                <Zap size={18} /> Approval rules
-              </h2>
-              <p>Choose how candidates reach the second interview.</p>
-            </div>
-          </div>
-          <div className="approval-modes">
-            {[false, true].map((auto) => (
-              <button
-                key={String(auto)}
-                className={!auto === !state.rules.automatic ? "active" : ""}
-                onClick={() => {
-                  if (auto && !validSetup) {
-                    toast.error(
-                      "Set your HR email and future interview slots before enabling automation.",
-                    );
-                    return;
-                  }
-                  updateRules({ automatic: auto });
-                }}
-              >
-                <strong>{auto ? "02 · Automatic" : "01 · HR approval"}</strong>
-                <span>
-                  {auto
-                    ? "Clear passes get a booking invitation"
-                    : "Select candidates and prepare invitations"}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="approval-fields">
-            {(
-              [
-                [
-                  "benchmark",
-                  "Pass benchmark",
-                  "Average across the six capabilities",
-                ],
-                [
-                  "minimum",
-                  "Minimum section score",
-                  "Any section below this goes to HR",
-                ],
-                [
-                  "spread",
-                  "Maximum score gap",
-                  "A larger high–low gap goes to HR",
-                ],
-              ] as const
-            ).map(([field, label, help]) => (
-              <label key={field}>
-                {label}
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={state.rules[field]}
-                  onChange={(e) => {
-                    if (e.target.value !== "")
-                      updateRules({
-                        [field]: Math.max(
-                          0,
-                          Math.min(100, Number(e.target.value)),
-                        ),
-                      });
-                  }}
-                />
-                <small>{help}</small>
-              </label>
-            ))}
-          </div>
-          <p className="approval-caption">
-            Exceptions are checked first, even when the average passes.
-            Below-benchmark candidates stay with HR; no automatic rejection.
-            Customer communication remains a separate human review.
-          </p>
-        </section>
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>
-                <CalendarDays size={18} /> Interview availability
-              </h2>
-              <p>Offer slots for candidates to choose from.</p>
-            </div>
-            <span className="approval-pill">30–60 min</span>
-          </div>
-          <div className="approval-fields">
-            <label>
-              HR Google email
-              <input
-                type="email"
-                placeholder="hr@company.com"
-                value={state.host}
-                onChange={(e) => update({ host: e.target.value })}
-              />
-            </label>
-            <label>
-              Duration
-              <select
-                value={state.duration}
-                onChange={(e) => update({ duration: Number(e.target.value) })}
-              >
-                {[30, 45, 60].map((n) => (
-                  <option key={n} value={n}>
-                    {n} minutes
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Location or meeting link
-              <input
-                value={state.location}
-                onChange={(e) => update({ location: e.target.value })}
-              />
-            </label>
-          </div>
-          <form
-            className="approval-slot-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const submittedSlot = String(
-                new FormData(e.currentTarget).get("interviewSlot") ?? "",
-              );
-              if (
-                !submittedSlot ||
-                !Number.isFinite(Date.parse(submittedSlot)) ||
-                Date.parse(submittedSlot) <= Date.now()
-              ) {
-                toast.error("Choose a future time.");
-                return;
-              }
-              const iso = new Date(submittedSlot).toISOString();
-              if (!state.slots.includes(iso))
-                update({ slots: [...state.slots, iso].sort() });
-              setSlot("");
-            }}
-          >
-            <label>
-              New slot · {Intl.DateTimeFormat().resolvedOptions().timeZone}
-              <input
-                aria-label="New interview slot"
-                type="datetime-local"
-                name="interviewSlot"
-                value={slot}
-                onChange={(e) => setSlot(e.target.value)}
-                required
-              />
-            </label>
-            <Button variant="outline" type="submit">
-              Add slot
-            </Button>
-          </form>
-          <div className="approval-slots">
-            {state.slots.length ? (
-              state.slots.map((s) => (
-                <span key={s}>
-                  {new Date(s).toLocaleString([], {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
+      {stage === 0 && (
+        <>
+          <div className="journey-two-columns">
+            <section className="journey-panel">
+              <h3>
+                <Zap size={20} /> Progression rules
+              </h3>
+              <div className="journey-mode-cards">
+                {[false, true].map((auto) => (
                   <button
-                    aria-label={`Remove slot ${s}`}
+                    key={String(auto)}
+                    aria-pressed={state.rules.automatic === auto}
+                    className={state.rules.automatic === auto ? "selected" : ""}
                     onClick={() =>
-                      update({ slots: state.slots.filter((v) => v !== s) })
+                      patch({ rules: { ...state.rules, automatic: auto } })
                     }
                   >
-                    ×
+                    <strong>
+                      {auto ? "Automatic progression" : "Manual HR approval"}
+                    </strong>
+                    <span>
+                      {auto
+                        ? "Invite clear passes immediately."
+                        : "Select one candidate or select all."}
+                    </span>
                   </button>
+                ))}
+              </div>
+              <div className="journey-form-grid">
+                {(
+                  [
+                    ["benchmark", "Pass benchmark"],
+                    ["minimum", "Minimum section"],
+                    ["spread", "Maximum score gap"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key}>
+                    {label}
+                    <input
+                      aria-label={label}
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={state.rules[key]}
+                      onChange={(e) => {
+                        if (e.target.value !== "")
+                          patch({
+                            rules: {
+                              ...state.rules,
+                              [key]: Math.max(
+                                0,
+                                Math.min(100, Number(e.target.value)),
+                              ),
+                            },
+                          });
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="journey-info">
+                <ShieldCheck size={20} />
+                <span>
+                  Exceptions take priority. A low section score or a large score
+                  gap always goes to HR, even when the average passes.
                 </span>
-              ))
-            ) : (
-              <p className="approval-caption">
-                Add at least one slot to enable invitations. Existing
-                invitations keep their original slots.
+              </div>
+              <p className="journey-muted">
+                Average uses the six capability scores. Customer communication
+                is reviewed separately.
               </p>
-            )}
-          </div>
-        </section>
-      </div>
-      <section className="panel approval-queue">
-        <div className="panel-heading">
-          <div>
-            <h2>Approval queue</h2>
-            <p>
-              {state.rules.automatic
-                ? "Automation is on · eligible passes receive demo invitations while this workspace is open."
-                : "Review passes, select candidates, and invite them together."}
-            </p>
-          </div>
-        </div>
-        <div className="approval-tabs" role="tablist">
-          {[
-            ["passed", "Passed"],
-            ["review", "Needs HR review"],
-            ["invited", "Interview invitations"],
-          ].map(([id, label]) => (
-            <button
-              role="tab"
-              aria-selected={tab === id}
-              key={id}
-              className={tab === id ? "active" : ""}
-              onClick={() => {
-                setTab(id);
-                setSelected([]);
-              }}
-            >
-              {label}
-              <span>{counts[id as keyof typeof counts]}</span>
-            </button>
-          ))}
-        </div>
-        <div className="approval-toolbar">
-          <input
-            aria-label="Search approval queue"
-            placeholder="Search candidates…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {tab !== "invited" && (
-            <>
+            </section>
+            <section className="journey-panel">
+              <h3>
+                <CalendarDays size={20} /> Interview availability
+              </h3>
+              <div className="journey-calendar-options">
+                <Button variant="outline" onClick={() => setCalendar(true)}>
+                  {state.calendarPreview
+                    ? "Calendar preview active"
+                    : "Preview Google Calendar"}
+                </Button>
+                <span>or add times manually below</span>
+              </div>
+              <div className="journey-form-grid two">
+                <label>
+                  HR email
+                  <input
+                    type="email"
+                    placeholder="hr@company.com"
+                    value={state.host}
+                    onChange={(e) => patch({ host: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Duration
+                  <select
+                    value={state.duration}
+                    onChange={(e) =>
+                      patch({ duration: Number(e.target.value) })
+                    }
+                  >
+                    {[30, 45, 60].map((n) => (
+                      <option key={n} value={n}>
+                        {n} minutes
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="journey-label">
+                Location or meeting link
+                <input
+                  value={state.location}
+                  onChange={(e) => patch({ location: e.target.value })}
+                />
+              </label>
+              <form
+                className="journey-slot-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const value = String(
+                    new FormData(e.currentTarget).get("slot"),
+                  );
+                  if (
+                    !Number.isFinite(Date.parse(value)) ||
+                    Date.parse(value) <= Date.now()
+                  ) {
+                    toast.error("Choose a future interview time.");
+                    return;
+                  }
+                  const iso = new Date(value).toISOString();
+                  patch({ slots: [...new Set([...state.slots, iso])].sort() });
+                  setSlot("");
+                }}
+              >
+                <label>
+                  New slot · {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                  <input
+                    type="datetime-local"
+                    name="slot"
+                    aria-label="New interview slot"
+                    required
+                    value={slot}
+                    onChange={(e) => setSlot(e.target.value)}
+                  />
+                </label>
+                <Button type="submit" variant="outline">
+                  Add slot
+                </Button>
+              </form>
+              <div className="journey-slots">
+                {state.slots.map((s) => (
+                  <span
+                    key={s}
+                    className={Date.parse(s) <= Date.now() ? "expired" : ""}
+                  >
+                    {new Date(s).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    <button
+                      aria-label={"Remove " + s}
+                      onClick={() =>
+                        patch({ slots: state.slots.filter((t) => t !== s) })
+                      }
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
               <Button
-                variant="outline"
+                className="journey-text-button"
+                variant="ghost"
+                onClick={demoSlots}
+              >
+                Use demo availability
+              </Button>
+            </section>
+          </div>
+          <div className={ready ? "journey-ready" : "journey-info"}>
+            {ready ? <CheckCircle2 size={20} /> : <Clock3 size={20} />}
+            <span>
+              {ready
+                ? "Your setup is ready. Continue to Invite candidates."
+                : "Add an HR email and at least one future slot to activate interview invitations."}
+            </span>
+          </div>
+        </>
+      )}
+      {stage === 1 && (
+        <section className="journey-panel">
+          <div className="journey-section-heading">
+            <div>
+              <h3>A personal invitation starts the journey.</h3>
+              <p>
+                Create a candidate invitation, then open it to see their
+                experience.
+              </p>
+            </div>
+            <Button onClick={onInvite}>
+              <Mail size={17} /> Invite candidate
+            </Button>
+          </div>
+          {!people.length ? (
+            <div className="journey-empty">
+              <Mail />
+              <h3>Your first candidate starts here.</h3>
+              <p>
+                Use fictional details for the walkthrough. You can open the
+                candidate journey in another tab.
+              </p>
+              <Button onClick={onInvite}>
+                Create first invitation
+                <ArrowRight size={16} />
+              </Button>
+            </div>
+          ) : (
+            <div className="journey-people">
+              {people.map((c) => (
+                <div className="journey-person-row" key={c.id}>
+                  <span className="journey-avatar">
+                    {c.name
+                      .split(" ")
+                      .map((v) => v[0])
+                      .slice(0, 2)
+                      .join("")}
+                  </span>
+                  <div>
+                    <strong>{c.name}</strong>
+                    <small>{c.email}</small>
+                  </div>
+                  <span className="journey-tag">{c.status}</span>
+                  {c.accessToken ? (
+                    <Button asChild variant="outline">
+                      <a
+                        href={pageUrl("/assess/" + c.accessToken)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open candidate journey
+                        <ArrowRight size={15} />
+                      </a>
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={() => onProfile(c.id)}>
+                      View sample profile
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+      {stage === 2 && (
+        <>
+          <div className="journey-metrics">
+            {[
+              ["Completed assessments", completed.length],
+              ["Passed", passed.length],
+              ["Needs HR review", exceptions.length],
+              ["Invited to interview", invited.length],
+            ].map(([label, n]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{n}</strong>
+              </div>
+            ))}
+          </div>
+          <section className="journey-panel">
+            <div className="journey-filter-tabs">
+              {[
+                ["all", "All pending", pending.length],
+                ["passed", "Passed", passed.length],
+                ["review", "Exceptions", exceptions.length],
+                ["held", "HR updates", held.length],
+              ].map(([id, label, count]) => (
+                <button
+                  key={id}
+                  aria-pressed={filter === id}
+                  className={filter === id ? "selected" : ""}
+                  onClick={() => {
+                    setFilter(String(id));
+                    setSelected([]);
+                  }}
+                >
+                  {label}
+                  <span>{count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="journey-table-actions">
+              <label className="journey-search">
+                <Search size={17} />
+                <input
+                  aria-label="Search results"
+                  placeholder="Search candidates…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+              <Button
                 disabled={!visible.length}
+                variant="outline"
                 onClick={() =>
                   setSelected(
                     visible.every((c) => selected.includes(c.id))
@@ -447,436 +575,476 @@ export function Approvals({
                   : "Select all"}
               </Button>
               <Button
-                className="primary-button"
-                disabled={!selectedCandidates.length}
-                onClick={() => setSend(true)}
+                disabled={!selected.length}
+                onClick={() => openAction("invite", selected)}
               >
-                Invite selected ({selectedCandidates.length}){" "}
-                <ArrowRight size={15} />
+                Invite selected ({selected.length})
               </Button>
-            </>
-          )}
-        </div>
-        <div className="approval-list">
-          {visible.length === 0 && (
-            <div className="approval-empty">
-              <CheckCircle2 size={28} />
-              <h3>
-                {tab === "review"
-                  ? "No candidates waiting for review"
-                  : tab === "invited"
-                    ? "Your interview invitations will appear here"
-                    : "No passes waiting for approval"}
-              </h3>
-              <p>
-                {tab === "invited"
-                  ? "Set availability, then invite passes manually or enable automation."
-                  : "Completed candidate results are routed here using your rules."}
-              </p>
             </div>
-          )}
-          {visible.map((c) => {
-            const o = outcome(c),
-              invitation = state.invites[c.id];
-            return (
-              <div className="approval-row" key={c.id}>
-                {!invitation && (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${c.name}`}
-                    checked={selected.includes(c.id)}
-                    onChange={(e) =>
-                      setSelected(
-                        e.target.checked
-                          ? [...selected, c.id]
-                          : selected.filter((id) => id !== c.id),
-                      )
-                    }
-                  />
-                )}
-                <div className="approval-person">
-                  <button onClick={() => onProfile(c.id)}>{c.name}</button>
-                  <small>{c.email}</small>
-                </div>
-                <div className="approval-evidence">
-                  <strong>
-                    {Math.round(o.average)}/100{" "}
-                    <span
-                      className={
-                        o.route === "review"
-                          ? "approval-warning"
-                          : "approval-pill"
-                      }
-                    >
-                      {invitation
-                        ? invitation.booked
-                          ? "Booked"
-                          : "Awaiting booking"
-                        : o.route === "review"
-                          ? "HR review"
-                          : "Passed"}
-                    </span>
-                  </strong>
-                  <p>
-                    {invitation
-                      ? `${invitation.source} invitation${invitation.booked ? " · " + new Date(invitation.booked).toLocaleString() : " · Candidate chooses a slot"}`
-                      : o.reason}
-                  </p>
-                  <div className="approval-bars">
-                    {c.scores.map((n, i) => (
-                      <span
-                        key={i}
-                        title={`${CAPS[i]}: ${n}`}
-                        className={n < state.rules.minimum ? "low" : ""}
-                      >
-                        {CAPS[i].split(" ")[0]} <b>{n}</b>
-                      </span>
-                    ))}
-                  </div>
-                  {invitation?.reason && (
-                    <p>HR rationale: {invitation.reason}</p>
-                  )}
-                </div>
+            {!visible.length ? (
+              <div className="journey-empty">
+                <CheckCircle2 />
+                <h3>
+                  {!completed.length
+                    ? "Waiting for completed assessments."
+                    : "You’re up to date."}
+                </h3>
+                <p>
+                  {invited.length
+                    ? "Your interview invitations are in Schedule interview."
+                    : "Completed profiles will appear here for review."}
+                </p>
                 <Button
                   variant="outline"
-                  onClick={() => {
-                    if (invitation) {
-                      setPreview(c.id);
-                      setChosen(invitation.booked ?? "");
-                    } else {
-                      setSelected([c.id]);
-                      setSend(true);
-                    }
-                  }}
+                  onClick={() => setStage(invited.length ? 3 : 1)}
                 >
-                  {invitation
-                    ? "Candidate preview"
-                    : o.route === "review"
-                      ? "Review & invite"
-                      : "Invite to interview"}
+                  {invited.length ? "View invitations" : "View candidates"}
                 </Button>
               </div>
-            );
-          })}
-        </div>
-      </section>
-      <Dialog open={send} onOpenChange={setSend}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
+            ) : (
+              visible.map((c) => {
+                const o = approvalOutcome(c, state.rules),
+                  review = state.reviews[c.id];
+                return (
+                  <div className="journey-result-row" key={c.id}>
+                    <div className="journey-result-top">
+                      <input
+                        type="checkbox"
+                        aria-label={"Select " + c.name}
+                        checked={selected.includes(c.id)}
+                        onChange={(e) =>
+                          setSelected(
+                            e.target.checked
+                              ? [...selected, c.id]
+                              : selected.filter((id) => id !== c.id),
+                          )
+                        }
+                      />
+                      <button
+                        className="journey-name"
+                        onClick={() => onProfile(c.id)}
+                      >
+                        {c.name}
+                        <small>{c.email}</small>
+                      </button>
+                      <strong>
+                        {Math.round(o.average)}
+                        <small>/100</small>
+                      </strong>
+                      <span
+                        className={
+                          "journey-tag " +
+                          (o.route === "review" ? "warning" : "")
+                        }
+                      >
+                        {review
+                          ? review.action === "hold"
+                            ? "On hold"
+                            : "Not progressing"
+                          : o.route === "review"
+                            ? "HR review"
+                            : "Passed"}
+                      </span>
+                      {c.journeyPreview && (
+                        <span className="journey-tag">Walkthrough</span>
+                      )}
+                    </div>
+                    <p>{review ? review.reason : o.reason}</p>
+                    <div className="journey-score-grid">
+                      {c.scores.map((score, i) => (
+                        <div key={i}>
+                          <span>{CAPS[i]}</span>
+                          <strong>{score}</strong>
+                          <div>
+                            <i
+                              style={{
+                                width: score + "%",
+                                background:
+                                  score < state.rules.minimum
+                                    ? "#F78F3D"
+                                    : "#324B71",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="journey-row-actions">
+                      <Button variant="ghost" onClick={() => onProfile(c.id)}>
+                        View full evidence
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => openAction("hold", [c.id])}
+                      >
+                        Hold
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => openAction("decline", [c.id])}
+                      >
+                        Decline progression
+                      </Button>
+                      <Button onClick={() => openAction("invite", [c.id])}>
+                        {o.route === "review" || review
+                          ? "Review & approve"
+                          : "Invite to interview"}
+                        <ArrowRight size={15} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </section>
+        </>
+      )}
+      {stage === 3 && (
+        <>
+          <div className="journey-metrics">
+            {[
+              ["Invitations", invited.length],
+              ["Awaiting booking", invited.length - booked.length],
+              ["Booked", booked.length],
+              [
+                "Attendance confirmed",
+                booked.filter((c) => state.invites[c.id].confirmedAt).length,
+              ],
+            ].map(([label, n]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{n}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="journey-interview-grid">
+            {invited.map((c) => {
+              const i = state.invites[c.id];
+              return (
+                <section className="journey-panel" key={c.id}>
+                  <div className="journey-section-heading">
+                    <h3>{c.name}</h3>
+                    <span className="journey-tag">
+                      {i.booked
+                        ? i.confirmedAt
+                          ? "Confirmed"
+                          : "Booked"
+                        : "Awaiting booking"}
+                    </span>
+                  </div>
+                  <p>
+                    {i.source} invitation · {i.duration} minutes
+                  </p>
+                  {i.booked ? (
+                    <div className="journey-ticket">
+                      <CalendarDays />
+                      <div>
+                        <strong>
+                          {new Date(i.booked).toLocaleDateString([], {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </strong>
+                        <span>
+                          {new Date(i.booked).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}{" "}
+                          · {i.location}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="journey-info">
+                      <Clock3 />
+                      <span>
+                        {i.availabilityRequested
+                          ? "Candidate requested more interview times."
+                          : `${i.slots.filter((s) => Date.parse(s) > Date.now()).length} future slots offered. The candidate chooses their preferred time.`}
+                      </span>
+                    </div>
+                  )}
+                  <div className="journey-actions">
+                    <Button variant="outline" onClick={() => setPreview(c)}>
+                      Open candidate view
+                    </Button>
+                    {!i.booked && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (!ready) {
+                            setStage(0);
+                            toast.error("Add future slots first.");
+                            return;
+                          }
+                          mutate((s) => ({
+                            ...s,
+                            invites: {
+                              ...s.invites,
+                              [c.id]: {
+                                ...s.invites[c.id],
+                                slots: s.slots.filter(
+                                  (v) => Date.parse(v) > Date.now(),
+                                ),
+                                availabilityRequested: undefined,
+                              },
+                            },
+                          }));
+                          toast.success(
+                            "Available slots updated for the candidate.",
+                          );
+                        }}
+                      >
+                        Refresh offered slots
+                      </Button>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          {!invited.length && (
+            <div className="journey-empty journey-panel">
+              <CalendarDays />
+              <h3>No interview invitations yet.</h3>
+              <p>Approve a candidate in Review results to start scheduling.</p>
+              <Button onClick={() => setStage(2)}>
+                Review results
+                <ArrowRight size={16} />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      {stage === 4 && (
+        <>
+          <div className="journey-info">
+            <ShieldCheck />
+            <span>
+              Use the capability profile and communication evidence to guide the
+              conversation. The final decision belongs to HR.
+            </span>
+          </div>
+          <div className="journey-interview-grid">
+            {booked.map((c) => {
+              const i = state.invites[c.id],
+                d = state.decisions[c.id];
+              return (
+                <section className="journey-panel" key={c.id}>
+                  <div className="journey-section-heading">
+                    <h3>{c.name}</h3>
+                    <span className="journey-tag">
+                      {d
+                        ? d.decision
+                        : i.attendedAt
+                          ? "Interview complete"
+                          : "Upcoming interview"}
+                    </span>
+                  </div>
+                  <p>
+                    {new Date(i.booked!).toLocaleString()} · {i.duration}{" "}
+                    minutes
+                  </p>
+                  <div className="journey-interview-prompts">
+                    <strong>Explore in the conversation</strong>
+                    <ul>
+                      <li>A customer challenge and how they responded.</li>
+                      <li>
+                        Their strongest capability and a development area.
+                      </li>
+                      <li>A practical example of taking ownership.</li>
+                    </ul>
+                  </div>
+                  {d && (
+                    <div className="journey-info">
+                      <CheckCircle2 />
+                      <span>
+                        <strong>{d.decision} · Recorded decision</strong>
+                        <br />
+                        {d.reason}
+                      </span>
+                    </div>
+                  )}
+                  <div className="journey-actions">
+                    <Button variant="outline" onClick={() => onProfile(c.id)}>
+                      View evidence
+                    </Button>
+                    {!i.attendedAt ? (
+                      <Button
+                        onClick={() => {
+                          mutate((s) => ({
+                            ...s,
+                            invites: {
+                              ...s.invites,
+                              [c.id]: {
+                                ...s.invites[c.id],
+                                attendedAt: new Date().toISOString(),
+                              },
+                            },
+                          }));
+                          toast.success(
+                            "Interview marked complete in the demo.",
+                          );
+                        }}
+                      >
+                        Mark interview complete
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          setFinal(d?.decision ?? "Hire");
+                          openAction("decision", [c.id]);
+                        }}
+                      >
+                        {d ? "Update decision" : "Record HR decision"}
+                      </Button>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          {!booked.length && (
+            <div className="journey-empty journey-panel">
+              <Users />
+              <h3>Your interviews will appear here.</h3>
+              <p>First, have a candidate choose an interview time.</p>
+              <Button onClick={() => setStage(3)}>
+                Go to scheduling
+                <ArrowRight size={16} />
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      {bottom}
+      {action && (
+        <Dialog
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) setAction(null);
+          }}
+        >
+          <DialogContent className="journey-dialog">
+            <DialogHeader>
+              <DialogTitle>
+                {action === "invite"
+                  ? "Approve & invite to interview"
+                  : action === "hold"
+                    ? "Hold for further review"
+                    : action === "decline"
+                      ? "Decline interview progression"
+                      : "Record the interview decision"}
+              </DialogTitle>
+              <DialogDescription>
+                {targets.map((c) => c.name).join(", ")} · This update appears in
+                the candidate’s demo journey.
+              </DialogDescription>
+            </DialogHeader>
+            {action === "decision" && (
+              <label className="journey-label">
+                HR decision
+                <select
+                  value={final}
+                  onChange={(e) => setFinal(e.target.value as typeof final)}
+                >
+                  <option>Hire</option>
+                  <option>Hold</option>
+                  <option>Reject</option>
+                </select>
+              </label>
+            )}
+            {action === "invite" && (
+              <div className="journey-info">
+                <CalendarDays />
+                <span>
+                  {state.slots.filter((s) => Date.parse(s) > Date.now()).length}{" "}
+                  future slots · {state.duration} minutes
+                  <br />
+                  {ready
+                    ? "Candidate chooses their preferred time."
+                    : "Complete interview availability in Set the rules first."}
+                </span>
+              </div>
+            )}
+            <label className="journey-label">
               {needsReason
-                ? "Review exception & invite"
-                : "Invite to second interview"}
-            </DialogTitle>
-            <DialogDescription>
-              Prepare a booking invitation for {selectedCandidates.length}{" "}
-              candidate(s). No email is sent in this prototype.
-            </DialogDescription>
-          </DialogHeader>
-          <p>{selectedCandidates.map((c) => c.name).join(", ")}</p>
-          <p>
-            {state.slots.filter((s) => Date.parse(s) > Date.now()).length}{" "}
-            future slot(s) · {state.duration} minutes ·{" "}
-            {state.host || "HR email required"}
-          </p>
-          {needsReason && (
-            <label className="approval-label">
-              Why should these candidates progress?
+                ? "Reason for this decision"
+                : "Review notes (optional)"}
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Record the strengths and gaps to explore at interview."
+                placeholder="Record the evidence and the next step."
               />
             </label>
-          )}
-          {!validSetup && (
-            <p role="alert">
-              Add an HR email and future slots in Interview availability first.
-            </p>
-          )}
-          <Button
-            disabled={
-              !validSetup ||
-              !selectedCandidates.length ||
-              (needsReason && reason.trim().length < 10)
-            }
-            onClick={prepare}
-          >
-            Prepare demo invitations
-          </Button>
-        </DialogContent>
-      </Dialog>
+            <div className="journey-actions">
+              <Button variant="outline" onClick={() => setAction(null)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  (needsReason && reason.trim().length < 10) ||
+                  (action === "invite" && !ready)
+                }
+                onClick={applyAction}
+              >
+                {action === "invite" ? "Confirm invitation" : "Save HR update"}
+              </Button>
+            </div>
+            <p className="journey-muted">Demo only · no email is sent.</p>
+          </DialogContent>
+        </Dialog>
+      )}
       <Dialog
         open={!!preview}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
       >
-        <DialogContent>
+        <DialogContent className="journey-candidate-dialog">
           <DialogHeader>
-            <DialogTitle>
-              {previewInvite?.booked
-                ? "Your second interview is booked"
-                : "You’re through to the second interview"}
-            </DialogTitle>
+            <DialogTitle>Candidate journey preview</DialogTitle>
             <DialogDescription>
-              Candidate preview · {previewCandidate?.name}. Choose an interview
-              time, then add it to Google Calendar.
+              Try the candidate’s next step. Your actions are saved to this
+              demo.
             </DialogDescription>
           </DialogHeader>
-          {previewInvite && previewCandidate && (
-            <>
-              <p>
-                {previewInvite.duration} minutes · {previewInvite.location}
-              </p>
-              {!previewInvite.booked ? (
-                <>
-                  <div className="approval-booking-slots">
-                    {previewInvite.slots
-                      .filter((s) => Date.parse(s) > Date.now())
-                      .map((s) => {
-                        const taken = Object.values(state.invites).some(
-                          (inv) =>
-                            inv.candidateId !== preview &&
-                            inv.booked &&
-                            Date.parse(s) <
-                              Date.parse(inv.booked) + inv.duration * 60000 &&
-                            Date.parse(s) + previewInvite.duration * 60000 >
-                              Date.parse(inv.booked),
-                        );
-                        return (
-                          <button
-                            key={s}
-                            disabled={taken}
-                            className={chosen === s ? "active" : ""}
-                            onClick={() => setChosen(s)}
-                          >
-                            {new Date(s).toLocaleString([], {
-                              dateStyle: "full",
-                              timeStyle: "short",
-                            })}
-                            {taken ? " · Unavailable" : ""}
-                          </button>
-                        );
-                      })}
-                  </div>
-                  <p className="approval-caption">
-                    Times shown in{" "}
-                    {Intl.DateTimeFormat().resolvedOptions().timeZone}.
-                    Availability is simulated; personal Google calendars are not
-                    checked.
-                  </p>
-                  <Button
-                    disabled={!chosen || Date.parse(chosen) <= Date.now()}
-                    onClick={() => {
-                      const conflict = Object.values(state.invites).some(
-                        (inv) =>
-                          inv.candidateId !== preview &&
-                          inv.booked &&
-                          Date.parse(chosen) <
-                            Date.parse(inv.booked) + inv.duration * 60000 &&
-                          Date.parse(chosen) + previewInvite.duration * 60000 >
-                            Date.parse(inv.booked),
-                      );
-                      if (conflict) {
-                        toast.error(
-                          "This slot has been booked. Choose another time.",
-                        );
-                        return;
-                      }
-                      update({
-                        invites: {
-                          ...state.invites,
-                          [preview!]: { ...previewInvite, booked: chosen },
-                        },
-                      });
-                    }}
-                  >
-                    Confirm interview time
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="approval-booked">
-                    <CheckCircle2 size={30} />
-                    <strong>
-                      {new Date(previewInvite.booked).toLocaleString([], {
-                        dateStyle: "full",
-                        timeStyle: "short",
-                      })}
-                    </strong>
-                    <p>
-                      Demo booking saved. HR: {previewInvite.host}
-                      <br />
-                      Candidate: {previewCandidate.email}
-                    </p>
-                  </div>
-                  <a
-                    className="approval-calendar-link"
-                    href={googleCalendarUrl(previewCandidate, previewInvite)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <CalendarDays size={18} /> Open Google Calendar draft
-                  </a>
-                  <p className="approval-caption">
-                    Both parties are included as guests. Save the event in
-                    Google Calendar and send invitations there; the other party
-                    accepts to add it to their calendar. No event has been
-                    created automatically.
-                  </p>
-                </>
-              )}
-            </>
-          )}
+          {preview && <CandidateOutcome candidate={preview} sample={sample} />}
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-/** Same-browser Pages demo: shows the next step immediately after submission. */
-export function CandidateNextStep({ token }: { token: string }) {
-  const [candidate, setCandidate] = useState<ApprovalCandidate | null>(null);
-  const [invite, setInvite] = useState<InterviewInvite | null>(null);
-  const [chosen, setChosen] = useState("");
-  const [review, setReview] = useState(false);
-  const key = "fieldfit-approvals-v1-live";
-  useEffect(() => {
-    function refresh() {
-      try {
-        const demo = JSON.parse(
-          localStorage.getItem("fieldfit-pages-demo-v1") ?? "null",
-        );
-        const c = demo?.candidates?.find((c: any) => c.accessToken === token);
-        const state: State | null = JSON.parse(
-          localStorage.getItem(key) ?? "null",
-        );
-        if (!c || !state || c.status !== "Completed") return;
-        setCandidate(c);
-        const o = approvalOutcome(c, state.rules);
-        setReview(o.route === "review");
-        let invitation = state.invites[c.id];
-        if (
-          !invitation &&
-          state.rules.automatic &&
-          o.route === "passed" &&
-          /^\S+@\S+\.\S+$/.test(state.host)
-        ) {
-          const slots = state.slots.filter((s) => Date.parse(s) > Date.now());
-          if (slots.length) {
-            invitation = {
-              candidateId: c.id,
-              slots,
-              duration: state.duration,
-              host: state.host,
-              location: state.location,
-              source: "Automatic",
-              created: new Date().toISOString(),
-            };
-            state.invites[c.id] = invitation;
-            localStorage.setItem(key, JSON.stringify(state));
-          }
-        }
-        setInvite(invitation ?? null);
-      } catch {
-        /* An assessment can be completed without browser demo storage. */
-      }
-    }
-    refresh();
-    const timer = window.setInterval(refresh, 3000);
-    return () => window.clearInterval(timer);
-  }, [token]);
-  if (!candidate) return null;
-  if (!invite)
-    return (
-      <p className="next-steps">
-        {review
-          ? "Your assessment is with HR for an individual review. The team will contact you about the next step."
-          : "HR will review your assessment and confirm your interview invitation."}
-      </p>
-    );
-  return (
-    <div className="candidate-next-step">
-      <div className="eyebrow">SECOND INTERVIEW · BROWSER DEMO</div>
-      <h2>
-        {invite.booked
-          ? "Your interview is booked"
-          : "You’re through! Choose an interview time."}
-      </h2>
-      <p>
-        {invite.duration} minutes · {invite.location}
-      </p>
-      {invite.booked ? (
-        <>
-          <strong>{new Date(invite.booked).toLocaleString()}</strong>
-          <a
-            className="approval-calendar-link"
-            href={googleCalendarUrl(candidate, invite)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open Google Calendar draft
-          </a>
-          <p className="approval-caption">
-            Review and save the event in Google Calendar to send the invitation
-            to both parties.
+      <Dialog open={calendar} onOpenChange={setCalendar}>
+        <DialogContent className="journey-dialog">
+          <DialogHeader>
+            <DialogTitle>Google Calendar · frontend preview</DialogTitle>
+            <DialogDescription>
+              Explore how connected availability will look. No Google account is
+              connected.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="journey-info">
+            <CalendarDays />
+            <span>
+              HR’s availability supplies interview slots. Candidates choose a
+              time that works for them.
+            </span>
+          </div>
+          <p>
+            Use sample availability to demonstrate the booking journey, or enter
+            interview times manually.
           </p>
-        </>
-      ) : (
-        <>
-          <select
-            aria-label="Choose interview time"
-            value={chosen}
-            onChange={(e) => setChosen(e.target.value)}
-          >
-            <option value="">Choose a time</option>
-            {invite.slots
-              .filter((s) => Date.parse(s) > Date.now())
-              .map((s) => (
-                <option key={s} value={s}>
-                  {new Date(s).toLocaleString()}
-                </option>
-              ))}
-          </select>
           <Button
-            disabled={!chosen || Date.parse(chosen) <= Date.now()}
             onClick={() => {
-              try {
-                const state: State = JSON.parse(localStorage.getItem(key)!);
-                const conflict = Object.values(state.invites).some(
-                  (i) =>
-                    i.candidateId !== candidate.id &&
-                    i.booked &&
-                    Date.parse(chosen) <
-                      Date.parse(i.booked) + i.duration * 60000 &&
-                    Date.parse(chosen) + invite.duration * 60000 >
-                      Date.parse(i.booked),
-                );
-                if (conflict) {
-                  toast.error(
-                    "This slot has been booked. Choose another time.",
-                  );
-                  return;
-                }
-                const booked = { ...invite, booked: chosen };
-                state.invites[candidate.id] = booked;
-                localStorage.setItem(key, JSON.stringify(state));
-                setInvite(booked);
-              } catch {
-                toast.error("Could not save your booking. Please retry.");
-              }
+              demoSlots();
+              patch({ calendarPreview: true });
+              setCalendar(false);
             }}
           >
-            Confirm interview time
+            Preview with sample availability
+            <ArrowRight size={16} />
           </Button>
-          <p className="approval-caption">
-            Times use {Intl.DateTimeFormat().resolvedOptions().timeZone}. No
-            email is sent and Google availability is not checked in this
-            prototype.
-          </p>
-        </>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

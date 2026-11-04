@@ -162,11 +162,11 @@ const samples = [
   },
 ];
 export default function Workspace() {
-  const [view, setView] = useState("Overview"),
+  const [view, setView] = useState("HR journey"),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("All statuses"),
     [workspace, setWorkspace] = useState<any>(null),
-    [mode, setMode] = useState("sample"),
+    [mode, setMode] = useState("live"),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [invite, setInvite] = useState(false),
@@ -350,7 +350,7 @@ export default function Workspace() {
   const titles: Record<string, string> = {
     Overview: "Your next great hire starts here.",
     Candidates: "Potential, with evidence to back it.",
-    Approvals: "From potential to a conversation.",
+    "HR journey": "Your hiring journey, step by step.",
     Assessments: "Built for the realities of the field.",
     Benchmarks: "Your team sets the reference.",
     Administration: "One standard. Clearly defined.",
@@ -373,7 +373,7 @@ export default function Workspace() {
             {[
               [BarChart3, "Overview"],
               [Users, "Candidates"],
-              [CalendarDays, "Approvals"],
+              [CalendarDays, "HR journey"],
               [ClipboardList, "Assessments"],
               [Layers3, "Benchmarks"],
               [Settings2, "Administration"],
@@ -439,8 +439,8 @@ export default function Workspace() {
               <div className="eyebrow">A CLEARER PICTURE OF POTENTIAL</div>
               <h1>{titles[view]}</h1>
               <p>
-                See beyond experience. Find the strengths that matter in the
-                field.
+                Follow the five steps from setting your standards to making a
+                confident hiring decision.
               </p>
             </div>
             <Button className="primary-button" onClick={() => openInvite()}>
@@ -467,29 +467,30 @@ export default function Workspace() {
               </Button>
             </div>
           )}
-          {view === "Approvals" && (
+          {view === "HR journey" && (
             <Approvals
               key={mode}
               candidates={candidates}
               sample={mode === "sample"}
               onProfile={setDetailId}
+              onInvite={() => openInvite()}
+              sourceControl={
+                <div className="journey-source">
+                  <Picker
+                    label="Journey data source"
+                    value={mode}
+                    onChange={setMode}
+                    items={[
+                      ["live", "My candidates"],
+                      ["sample", "Sample profiles"],
+                    ]}
+                  />
+                  <Button variant="outline" onClick={() => load()}>
+                    <RefreshCw size={14} /> Refresh
+                  </Button>
+                </div>
+              }
             />
-          )}
-          {view === "Approvals" && (
-            <div className="approval-data-source">
-              <Picker
-                label="Approval data source"
-                value={mode}
-                onChange={setMode}
-                items={[
-                  ["sample", "Sample data"],
-                  ["live", "My candidates"],
-                ]}
-              />
-              <Button variant="outline" onClick={() => load()}>
-                <RefreshCw size={14} /> Refresh results
-              </Button>
-            </div>
           )}
           {["Overview", "Candidates"].includes(view) && (
             <>
@@ -533,7 +534,7 @@ export default function Workspace() {
                       <p>One consistent view of every candidate.</p>
                       <button
                         className="text-link"
-                        onClick={() => setView("Approvals")}
+                        onClick={() => setView("HR journey")}
                       >
                         Manage approvals & interviews →
                       </button>

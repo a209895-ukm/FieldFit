@@ -1,3 +1,6 @@
+import { CandidateInbox } from "./candidate-journey";
+import { JourneySteps } from "./journey-steps";
+import { CANDIDATE_STEPS } from "@/lib/journey";
 import { useState } from "react";
 import {
   ArrowRight,
@@ -46,7 +49,7 @@ export function Welcome() {
               <Compass size={27} />
             </span>
             <span className="eyebrow">FOR CANDIDATES & TEAM MEMBERS</span>
-            <h2>Employee</h2>
+            <h2>Candidate</h2>
             <p>
               Show how you think, solve problems and connect with customers.
             </p>
@@ -65,7 +68,7 @@ export function Welcome() {
               </li>
             </ul>
             <span className="role-cta">
-              Enter as Employee <ArrowRight size={18} />
+              Start candidate journey <ArrowRight size={18} />
             </span>
           </a>
           <a className="role-card employer-card" href={pageUrl("/employer")}>
@@ -73,7 +76,7 @@ export function Welcome() {
               <Users size={27} />
             </span>
             <span className="eyebrow">FOR HIRING MANAGERS & HR</span>
-            <h2>Employer</h2>
+            <h2>HR team</h2>
             <p>
               See beyond experience. Find the strengths your field team needs.
             </p>
@@ -92,7 +95,7 @@ export function Welcome() {
               </li>
             </ul>
             <span className="role-cta">
-              Enter as Employer <ArrowRight size={18} />
+              Start HR journey <ArrowRight size={18} />
             </span>
           </a>
         </div>
@@ -141,8 +144,8 @@ export function EmployeePortal() {
           <ArrowLeft size={15} /> Switch role
         </a>
       </header>
-      <main className="employee-main">
-        <div className="eyebrow">EMPLOYEE PORTAL</div>
+      <main className="employee-main journey-candidate-home">
+        <div className="eyebrow">CANDIDATE JOURNEY</div>
         <h1>
           Your potential.
           <br />
@@ -152,6 +155,8 @@ export function EmployeePortal() {
           Explore a few real-world sales situations and show how you work.
           Choose English, Bahasa Malaysia or Mandarin when you begin.
         </p>
+        <JourneySteps steps={CANDIDATE_STEPS} active={0} />
+        <CandidateInbox />
         <section className="employee-start">
           <span className="role-icon">
             <Compass size={26} />
@@ -164,7 +169,7 @@ export function EmployeePortal() {
           </p>
           <Button asChild>
             <a href={pageUrl("/assess/demo")}>
-              Start practice assessment <ArrowRight size={16} />
+              Try practice questions <ArrowRight size={16} />
             </a>
           </Button>
         </section>
@@ -172,7 +177,7 @@ export function EmployeePortal() {
           <h2>Have an invitation?</h2>
           <p>
             {STATIC_DEMO
-              ? "Demo invitations open in the browser where they were created. To explore from any device, use the practice assessment above."
+              ? "Demo invitations open in the browser where they were created. To explore from any device, create a demo invitation above."
               : "Paste the link from your hiring team to open your assigned assessment."}
           </p>
           <form onSubmit={open}>
@@ -202,7 +207,7 @@ export function EmployeePortal() {
           )}
         </section>
         <a className="portal-switch" href={pageUrl("/employer")}>
-          Looking for the hiring dashboard? Enter as Employer{" "}
+          Looking for the hiring dashboard? Start HR journey{" "}
           <ArrowRight size={15} />
         </a>
       </main>
