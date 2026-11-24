@@ -13,6 +13,21 @@ The GitHub Pages version is an interactive demo. Records are saved in this brows
 
 The Node.js version below uses SQLite and supports candidate links across browsers. GitHub Pages does not run that backend.
 
+## TCP Red Bull Malaysia pilot (Week 4)
+
+Client requirements from the Question Bank Input Form (Final, 18 Nov 2026) and the Week 3 meeting:
+
+- **Staff sign-in and roles** (`#/login`): Master Admin (users, purge, everything), HR (invitations, rules, question bank, all candidates) and Hiring Manager (only assigned candidates; review and decide). Demo accounts, no password; Microsoft 365 sign-in after the IT hosting decision.
+- **Job roles and levels**: six client roles. Entry ~30 min / 24 questions, Junior ~40 min / 30 questions, Senior ~50 min / 26 questions + 3 open-ended. Capability weights per level give the weighted score used for routing.
+- **Client scoring**: +1 / 0 / -0.5 / -1, and -2 for fraud. Breach or fraud answers raise an integrity flag that always routes to HR. Open-ended answers are marked Full / Partial / No credit.
+- **Anti-cheating**: tab or window switches show a warning; after the allowed number (default 2) the next switch submits the assessment. Per-question time limits; calculator on numerical items.
+- **Outlook** interview booking (Outlook web draft or .ics) with HR-uploaded slots. Live Outlook sync waits for IT approval.
+- **AI scoring prototype**: an in-browser suggested score shown next to the manual rubric score, so the team can compare.
+- **Question bank**: add, edit, retire, filter by level, and import the client's Excel form (tab "4. Your Questions"). Only 8 sample client questions are built in; the full bank is imported when ready.
+- Not built yet: the second spoken task for Junior roles, official logo and brand colours (pending from the client).
+
+Check: `npm run test:client`.
+
 ## Quick start
 
 Requires **Node.js 24 or newer**.

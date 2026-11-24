@@ -55,6 +55,9 @@ import {
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
+import { suggestRatings } from "@/lib/ai-suggest";
+import { questionsFromRows } from "@/lib/bank-import";
+import { weightedScore, WEIGHTS } from "@/lib/client-config";
 export async function api(path: string, data?: any) {
   const res = await apiFetch("/api/" + path, {
     method: data === undefined ? "GET" : "POST",
@@ -277,7 +280,15 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
     [kpi, setKpi] = useState("100"),
     [outcomeNotes, setOutcomeNotes] = useState(""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [marks, setMarks] = useState<Record<string, number>>(c.openMarks ?? {});
+  const ai = suggestRatings(c.conversation ?? "");
+  const manualScore = Math.round(
+    (ratings.reduce((a: number, b: number) => a + b, 0) / 16) * 100,
+  );
+  const openItems = (c.assessment?.questions ?? []).filter(
+    (q: any) => q.format === "open",
+  );
   const rules = c.assessment?.rules ?? DEFAULT_RULES;
   const summary = profile(c.scores, rules);
   const sample = c.id.startsWith("demo");
@@ -321,6 +332,53 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           {c.status}
         </span>
       </div>
+      {c.roleTitle && (
+        <div className="detail-meta">
+          <span>
+            <strong>{c.roleTitle}</strong> · {c.level} level
+          </span>
+          <span>
+            Hiring manager: {c.managerName ?? "not assigned"}
+          </span>
+          {c.scores?.length ? (
+            <span>
+              Weighted score{" "}
+              <strong>{Math.round(weightedScore(c.scores, c.level))}/100</strong>{" "}
+              (weights{" "}
+              {WEIGHTS[c.level as keyof typeof WEIGHTS]
+                ?.map((w) => Math.round(w * 100))
+                .join("/")}
+              )
+            </span>
+          ) : null}
+        </div>
+      )}
+      {c.flags?.length ? (
+        <div className="error" role="status">
+          <strong>Integrity flag.</strong> {c.flags.length} answer
+          {c.flags.length > 1 ? "s" : ""} the client scores as{" "}
+          {c.flags.some((f: any) => f.severity === "Fraud")
+            ? "fraud or falsifying data (−2.0)"
+            : "a policy breach (−1.0)"}
+          : {c.flags.map((f: any) => f.id).join(", ")}. Probe this in the
+          interview; HR review is required.
+        </div>
+      ) : null}
+      {c.autoSubmitted && (
+        <div className="notice">
+          Submitted automatically ({c.autoSubmitted}).
+        </div>
+      )}
+      {openItems.length > 0 &&
+        openItems.some((q: any) => marks[q.id] === undefined) &&
+        c.status === "Completed" && (
+          <div className="notice">
+            {openItems.filter((q: any) => c.openMarks?.[q.id] === undefined)
+              .length}{" "}
+            open-ended answer(s) await marking in Evidence. Their
+            capabilities are scored without them until marked.
+          </div>
+        )}
       {sample && (
         <div className="notice">
           Illustrative profile. Changes cannot be saved to sample candidates.
@@ -391,7 +449,9 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
                 <div>
                   <strong>Reliability review</strong>
                   <p>
-                    {c.switches ?? 0} reported tab changes.{" "}
+                    {c.switches ?? 0} tab or window switches (
+                    {rules.maxWarnings ?? 2} warnings allowed before
+                    auto-submit).{" "}
                     {elapsed !== null && elapsed < 180
                       ? "Fast completion: discuss before interpreting scores."
                       : "Timing and tab changes are context, not proof of misconduct."}{" "}
@@ -410,18 +470,69 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
                 {q.id} · {CAPS[q.cap]}
               </small>
               <p>{q.prompt[c.language as keyof typeof LANGS] ?? q.prompt.en}</p>
-              <strong>
-                {c.answers?.[q.id] === undefined
-                  ? "Unanswered"
-                  : q.options[c.language as keyof typeof LANGS]?.[
-                      c.answers[q.id]
-                    ]}
-              </strong>
-              <p className="muted">
-                {q.explanation} · {q.points[c.answers?.[q.id]] ?? 0}/100
-              </p>
+              {q.format === "open" ? (
+                <>
+                  <blockquote>
+                    {c.written?.[q.id] || "No written answer."}
+                  </blockquote>
+                  <p className="muted small">{q.rubric ?? q.explanation}</p>
+                  <div className="open-mark">
+                    <Picker
+                      label={"Mark " + q.id}
+                      value={
+                        marks[q.id] === undefined ? "none" : String(marks[q.id])
+                      }
+                      onChange={(v: string) =>
+                        setMarks({ ...marks, [q.id]: Number(v) })
+                      }
+                      items={[
+                        ["none", "Not marked"],
+                        ["100", "Full credit"],
+                        ["50", "Partial credit"],
+                        ["0", "No credit"],
+                      ]}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>
+                    {c.answers?.[q.id] === undefined
+                      ? "Unanswered"
+                      : q.options[c.language as keyof typeof LANGS]?.[
+                          c.answers[q.id]
+                        ]}
+                  </strong>
+                  <p className="muted">
+                    {q.explanation} ·{" "}
+                    {q.format === "weighted"
+                      ? `${((q.points[c.answers?.[q.id]] ?? 0) / 100).toFixed(1)} (client scale +1 to −2)`
+                      : `${q.points[c.answers?.[q.id]] ?? 0}/100`}
+                  </p>
+                </>
+              )}
             </div>
           ))}
+          {openItems.length > 0 && !sample && (
+            <Button
+              disabled={
+                busy ||
+                c.status !== "Completed" ||
+                openItems.every((q: any) => marks[q.id] === undefined)
+              }
+              onClick={() =>
+                save("open-review", {
+                  marks: Object.fromEntries(
+                    Object.entries(marks).filter(([id]) =>
+                      openItems.some((q: any) => q.id === id),
+                    ),
+                  ),
+                })
+              }
+            >
+              Save open-ended marks
+            </Button>
+          )}
           {sample && (
             <p className="muted">
               Item responses are unavailable for illustrative profiles.
@@ -483,6 +594,42 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               transcribed.
             </p>
           )}
+          <div className="ai-compare">
+            <div>
+              <span className="eyebrow">A · AI-SUGGESTED (PROTOTYPE)</span>
+              <strong>{ai.score}/100</strong>
+              <small>
+                {RUBRIC.map((r, i) => `${ai.ratings[i]}`).join(" · ")} per
+                criterion
+              </small>
+            </div>
+            <div>
+              <span className="eyebrow">B · YOUR MANUAL RUBRIC</span>
+              <strong>{manualScore}/100</strong>
+              <small>{ratings.join(" · ")} per criterion</small>
+            </div>
+            <div>
+              <span className="eyebrow">DIFFERENCE</span>
+              <strong>
+                {manualScore - ai.score > 0 ? "+" : ""}
+                {manualScore - ai.score}
+              </strong>
+              <small>Manual minus suggested</small>
+            </div>
+            <p className="muted small">
+              Simulated suggestion from the transcript (keyword check, runs in
+              this browser) so the team can test option a) vs b). The manual
+              score is the one that counts. A real AI model would replace this
+              after the pilot.
+            </p>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => setRatings(ai.ratings)}
+            >
+              Start from the suggested ratings
+            </button>
+          </div>
           <p className="muted small">
             Reply content · 0 = absent, 1 = weak, 2 = partial, 3 = effective, 4
             = clear and specific.
@@ -490,9 +637,12 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              const aiRecord = { ...ai, manual: manualScore };
               save(
                 "review",
-                voice ? { ratings, notes, delivery } : { ratings, notes },
+                voice
+                  ? { ratings, notes, delivery, ai: aiRecord }
+                  : { ratings, notes, ai: aiRecord },
               );
             }}
           >
@@ -804,11 +954,79 @@ export function Benchmarks({ candidates, onInvite }: any) {
 export function Admin({ workspace: w, onUpdate }: any) {
   const [settings, setSettings] = useState(() => structuredClone(w.settings)),
     [selected, setSelected] = useState(0),
+    [levelFilter, setLevelFilter] = useState("All"),
+    [importNote, setImportNote] = useState(""),
     [lang, setLang] = useState("en"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const q = settings.questions[selected];
-  const admin = w.user.role === "admin";
+  // HR and the Master Admin manage hiring rules and the question bank; purging data is Master Admin only.
+  const admin = ["admin", "hr"].includes(w.user.role);
+  const master = w.user.role === "admin";
+  const shown = settings.questions
+    .map((item: any, i: number) => [item, i])
+    .filter(
+      ([item]: any) =>
+        levelFilter === "All" ||
+        (levelFilter === "General" ? !item.level : item.level === levelFilter),
+    );
+  function addQuestion() {
+    const id = "NEW-" + Date.now().toString(36).toUpperCase();
+    const blank = ["", "", "", ""];
+    setSettings({
+      ...settings,
+      questions: [
+        ...settings.questions,
+        {
+          id,
+          cap: 0,
+          prompt: { en: "", ms: "", zh: "" },
+          options: { en: [...blank], ms: [...blank], zh: [...blank] },
+          points: [100, 0, 0, 0],
+          explanation: "",
+          enabled: false,
+          level: "Entry",
+          format: "single",
+          translated: false,
+          client: true,
+        },
+      ],
+    });
+    setSelected(settings.questions.length);
+    setLevelFilter("All");
+  }
+  async function importWorkbook(file: File) {
+    setImportNote("");
+    setError("");
+    try {
+      const { default: readXlsxFile } = await import("read-excel-file");
+      let rows: any[][];
+      try {
+        rows = await readXlsxFile(file, { sheet: "4. Your Questions" });
+      } catch {
+        rows = await readXlsxFile(file);
+      }
+      const { questions, skipped } = questionsFromRows(
+        rows,
+        settings.questions,
+      );
+      if (!questions.length)
+        throw Error(
+          "No questions found. " + (skipped.slice(0, 3).join(" · ") || ""),
+        );
+      setSettings({
+        ...settings,
+        questions: [...settings.questions, ...questions],
+      });
+      setImportNote(
+        `${questions.length} question(s) added from ${file.name}.` +
+          (skipped.length ? ` Skipped: ${skipped.join(" · ")}` : "") +
+          " Review them, then select Save question bank.",
+      );
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
   async function action(path: string, body: any) {
     setBusy(true);
     setError("");
@@ -854,7 +1072,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
             {[
               ["proficient", "Proficient from"],
               ["strong", "Strong from"],
-              ["minutes", "Time limit (minutes)"],
+              ["maxWarnings", "Tab-switch warnings before auto-submit"],
             ].map(([key, label]) => (
               <label className="form-label" key={key}>
                 {label}
@@ -862,7 +1080,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
                   type="number"
                   min="1"
                   max="100"
-                  value={settings.rules[key]}
+                  value={settings.rules[key] ?? (key === "maxWarnings" ? 2 : "")}
                   disabled={!admin}
                   onChange={(e) =>
                     setSettings({
@@ -877,6 +1095,11 @@ export function Admin({ workspace: w, onUpdate }: any) {
               </label>
             ))}
           </div>
+          <p className="muted small">
+            Time limits follow the job level: Entry 30 min, Junior 40 min,
+            Senior 50 min, with a per-question limit (90 s judgement, 2.5 min
+            calculation and data, 8 min open-ended).
+          </p>
           {CAPS.map((cap, i) => (
             <div className="rule-row" key={cap}>
               <strong>{cap}</strong>
@@ -909,17 +1132,58 @@ export function Admin({ workspace: w, onUpdate }: any) {
         <TabsContent value="questions">
           <h2 className="section-title">One item ID. Three languages.</h2>
           <p className="muted">
-            Draft translations require bilingual review and back-translation.
-            Keep at least two active items in each capability.
+            {settings.questions.filter((x: any) => x.client).length} client
+            questions (sample until the full bank is imported) and{" "}
+            {settings.questions.filter((x: any) => !x.client).length} general
+            items. Add, edit or retire questions, or import the client’s Excel
+            form (tab “4. Your Questions”). Client questions show English until
+            the BM and Mandarin translations are reviewed.
           </p>
+          <div className="button-row">
+            <Button variant="outline" disabled={!admin} onClick={addQuestion}>
+              Add question
+            </Button>
+            <label
+              className={"button-like" + (admin ? "" : " disabled")}
+              title="Import an .xlsx laid out like the Question Bank Input Form"
+            >
+              Import Excel (.xlsx)
+              <input
+                type="file"
+                accept=".xlsx"
+                hidden
+                disabled={!admin}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) importWorkbook(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {importNote && <div className="notice">{importNote}</div>}
           <div className="question-editor-top">
+            <Picker
+              label="Job level filter"
+              value={levelFilter}
+              onChange={(v: string) => {
+                setLevelFilter(v);
+                const first = settings.questions.findIndex(
+                  (item: any) =>
+                    v === "All" ||
+                    (v === "General" ? !item.level : item.level === v),
+                );
+                if (first >= 0) setSelected(first);
+              }}
+              items={["All", "Entry", "Junior", "Senior", "General"]}
+            />
             <Picker
               label="Select question"
               value={String(selected)}
               onChange={(v: string) => setSelected(Number(v))}
-              items={settings.questions.map((item: any, i: number) => [
+              items={shown.map(([item, i]: any) => [
                 String(i),
-                item.id + " · " + CAPS[item.cap],
+                `${item.id} · ${CAPS[item.cap]} · ${item.level ?? "General"}${item.format === "open" ? " · open-ended" : ""}${item.enabled ? "" : " · retired"}`,
               ])}
             />
             <Picker
@@ -929,6 +1193,35 @@ export function Admin({ workspace: w, onUpdate }: any) {
               items={Object.entries(LANGS)}
             />
           </div>
+          {q.client && (
+            <div className="question-editor-top">
+              <Picker
+                label="Capability"
+                value={String(q.cap)}
+                onChange={(v: string) => updateQuestion("cap", Number(v))}
+                items={CAPS.map((c, i) => [String(i), c])}
+              />
+              <Picker
+                label="Job level"
+                value={q.level ?? "Entry"}
+                onChange={(v: string) => updateQuestion("level", v)}
+                items={["Entry", "Junior", "Senior"]}
+              />
+              <Picker
+                label="Format"
+                value={q.format ?? "single"}
+                onChange={(v: string) => updateQuestion("format", v)}
+                items={[
+                  ["single", "Single correct answer"],
+                  ["weighted", "Weighted judgement"],
+                  ["open", "Open-ended"],
+                ]}
+              />
+            </div>
+          )}
+          {q.source && (
+            <p className="muted small">Based on sample file: {q.source}</p>
+          )}
           <label className="form-label">
             Question
             <textarea
@@ -942,7 +1235,17 @@ export function Admin({ workspace: w, onUpdate }: any) {
               }
             />
           </label>
-          {q.options[lang].map((opt: string, i: number) => (
+          {q.format === "open" && (
+            <label className="form-label">
+              What a strong answer must include (Full / Partial / No credit)
+              <textarea
+                value={q.rubric ?? ""}
+                disabled={!admin}
+                onChange={(e) => updateQuestion("rubric", e.target.value)}
+              />
+            </label>
+          )}
+          {q.format !== "open" && q.options[lang].map((opt: string, i: number) => (
             <div className="option-editor" key={i}>
               <label className="form-label">
                 Option {String.fromCharCode(65 + i)}
@@ -963,8 +1266,9 @@ export function Admin({ workspace: w, onUpdate }: any) {
                 Points
                 <input
                   type="number"
-                  min="0"
+                  min="-200"
                   max="100"
+                  step="50"
                   disabled={!admin}
                   value={q.points[i]}
                   onChange={(e) =>
@@ -993,7 +1297,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
               disabled={!admin}
               onCheckedChange={(v) => updateQuestion("enabled", v === true)}
             />
-            Include in the random question pool
+            Active in the question pool (untick to retire)
           </label>
           <Button
             disabled={!admin || busy}
@@ -1003,6 +1307,12 @@ export function Admin({ workspace: w, onUpdate }: any) {
           </Button>
         </TabsContent>
         <TabsContent value="team">
+          <h2 className="section-title">Hosting</h2>
+          <p className="muted">
+            Pending the client’s IT decision: a standalone cloud deployment
+            first, or building inside the client’s Microsoft 365 / SharePoint.
+            This demo keeps everything in the browser.
+          </p>
           <h2 className="section-title">Your browser workspace</h2>
           <p className="muted">
             {STATIC_DEMO
@@ -1018,7 +1328,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
           </p>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" disabled={!admin}>
+              <Button variant="outline" disabled={!master}>
                 Purge expired records
               </Button>
             </AlertDialogTrigger>
@@ -1042,8 +1352,8 @@ export function Admin({ workspace: w, onUpdate }: any) {
           </AlertDialog>
           <div className="notice">
             Spoken replies are recorded and transcribed in the candidate's
-            browser; a person marks content and delivery with a fixed rubric. AI
-            scoring is not connected. No webcam, demographic attributes, accent
+            browser; a person marks content and delivery with a fixed rubric. An
+            AI-suggested score is shown as a prototype for comparison only. No webcam, demographic attributes, accent
             or voice-quality measures, or automated hiring decisions are used.
           </div>
         </TabsContent>

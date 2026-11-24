@@ -9,6 +9,7 @@ export type JourneyCandidate = ApprovalCandidate & {
   accessToken?: string;
   language?: string;
   journeyPreview?: string;
+  roleTitle?: string | null;
 };
 export type JourneyInvite = InterviewInvite & {
   confirmedAt?: string;

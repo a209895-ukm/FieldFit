@@ -14,18 +14,17 @@ import {
 } from "lucide-react";
 import { pageUrl, STATIC_DEMO } from "@/lib/navigation";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "./login";
+import { BRAND } from "@/lib/client-config";
 
 export function Welcome() {
   return (
     <div className="welcome-page">
       <header className="portal-header">
-        <a className="brand" href={pageUrl("/")}>
-          <span className="brand-mark">ff</span>FieldFit
-          <span className="brand-dot">.</span>
-        </a>
+        <BrandMark />
         <span className="portal-badge">
           <span className="pilot-dot" />
-          No login needed
+          {BRAND.company} pilot
         </span>
       </header>
       <main className="portal-main">
@@ -71,12 +70,12 @@ export function Welcome() {
               Start candidate journey <ArrowRight size={18} />
             </span>
           </a>
-          <a className="role-card employer-card" href={pageUrl("/employer")}>
+          <a className="role-card employer-card" href={pageUrl("/login")}>
             <span className="role-icon">
               <Users size={27} />
             </span>
-            <span className="eyebrow">FOR HIRING MANAGERS & HR</span>
-            <h2>HR team</h2>
+            <span className="eyebrow">MASTER ADMIN · HR · HIRING MANAGERS</span>
+            <h2>Hiring team</h2>
             <p>
               See beyond experience. Find the strengths your field team needs.
             </p>
@@ -95,7 +94,7 @@ export function Welcome() {
               </li>
             </ul>
             <span className="role-cta">
-              Start HR journey <ArrowRight size={18} />
+              Staff sign in <ArrowRight size={18} />
             </span>
           </a>
         </div>
@@ -108,7 +107,7 @@ export function Welcome() {
         <span>FieldFit · Every candidate, measured the same way.</span>
         <span>
           {STATIC_DEMO
-            ? "Interactive demo · No account required"
+            ? "Interactive demo · Demo staff accounts"
             : "Employee & employer workspace"}
         </span>
       </footer>
@@ -136,10 +135,7 @@ export function EmployeePortal() {
   return (
     <div className="welcome-page">
       <header className="portal-header">
-        <a className="brand" href={pageUrl("/")}>
-          <span className="brand-mark">ff</span>FieldFit
-          <span className="brand-dot">.</span>
-        </a>
+        <BrandMark />
         <a className="portal-switch" href={pageUrl("/")}>
           <ArrowLeft size={15} /> Switch role
         </a>
@@ -206,8 +202,8 @@ export function EmployeePortal() {
             </p>
           )}
         </section>
-        <a className="portal-switch" href={pageUrl("/employer")}>
-          Looking for the hiring dashboard? Start HR journey{" "}
+        <a className="portal-switch" href={pageUrl("/login")}>
+          Looking for the hiring dashboard? Staff sign in{" "}
           <ArrowRight size={15} />
         </a>
       </main>

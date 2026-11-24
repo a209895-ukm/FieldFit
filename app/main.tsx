@@ -7,6 +7,8 @@ import { Welcome, EmployeePortal } from "./welcome";
 import { currentRoute, pageUrl, STATIC_DEMO } from "@/lib/navigation";
 import "./globals.css";
 import { DemoGuide } from "./demo-guide";
+import { StaffLogin } from "./login";
+import { sessionEmail } from "@/lib/session";
 
 function App() {
   const [path, setPath] = useState(currentRoute);
@@ -35,8 +37,11 @@ function App() {
         <Welcome />
       ) : path === "/employee" ? (
         <EmployeePortal />
+      ) : path === "/login" ? (
+        <StaffLogin />
       ) : path === "/employer" ? (
-        <Workspace />
+        // The guided client demo signs in as the Master Admin automatically.
+        sessionEmail() ? <Workspace /> : <StaffLogin />
       ) : (
         <main className="assessment-main">
           <h1>Page not found</h1>

@@ -3518,3 +3518,202 @@ blockquote {
     display: none;
   }
 }
+
+/* ---- TCP Red Bull Malaysia pilot additions (Week 4) ---- */
+.brand-client {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #5f7069;
+  margin-left: 10px;
+  align-self: flex-end;
+  margin-bottom: 6px;
+  white-space: nowrap;
+}
+.ff-sidebar .brand-client {
+  display: none;
+}
+.login-main h1 {
+  margin-bottom: 10px;
+}
+.login-accounts h2 {
+  font-size: 16px;
+  margin: 28px 0 12px;
+}
+.login-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.login-grid button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  text-align: left;
+  padding: 16px;
+  background: white;
+  border: 1px solid #e1e7e2;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.login-grid button:hover {
+  border-color: #1e6954;
+}
+.login-grid small {
+  font-size: 11px;
+}
+.role-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  border-radius: 99px;
+  padding: 3px 9px;
+  background: #e6f0eb;
+  color: #1e6954;
+}
+.role-pill.role-admin {
+  background: #16233f;
+  color: white;
+}
+.role-pill.role-manager {
+  background: #f6f0de;
+  color: #8a6c33;
+}
+.role-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.role-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.user-form {
+  display: grid;
+  gap: 10px;
+  max-width: 420px;
+}
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: #5f7069;
+  margin: 10px 0 4px;
+}
+.ai-compare {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px dashed #c9d6cf;
+  border-radius: 10px;
+}
+.ai-compare > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ai-compare strong {
+  font-size: 20px;
+}
+.ai-compare small {
+  font-size: 10px;
+  color: #7b8a84;
+}
+.ai-compare > p,
+.ai-compare > button {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.open-mark {
+  max-width: 260px;
+  margin: 6px 0 4px;
+}
+.question-prompt {
+  white-space: pre-line;
+}
+.question-timer {
+  font-size: 12px;
+  color: #5f7069;
+  margin-right: 10px;
+}
+.question-timer.urgent {
+  color: #b34a2a;
+  font-weight: 700;
+}
+.calc-wrap {
+  margin: -6px 0 12px;
+}
+.calc-wrap .link-button {
+  margin-top: 0;
+}
+.calculator {
+  margin-top: 8px;
+  width: 220px;
+  padding: 10px;
+  border: 1px solid #dfe6e1;
+  border-radius: 10px;
+  background: #fbfcfb;
+}
+.calculator input {
+  width: 100%;
+  font-size: 16px;
+  padding: 6px 8px;
+  border: 1px solid #dfe6e1;
+  border-radius: 6px;
+  text-align: right;
+}
+.calculator output {
+  display: block;
+  text-align: right;
+  font-size: 12px;
+  color: #5f7069;
+  min-height: 18px;
+  margin: 4px 0;
+}
+.calc-keys {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.calc-keys button {
+  padding: 8px 0;
+  border: 1px solid #e3e9e5;
+  border-radius: 6px;
+  background: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+.button-like {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid #d9e2dc;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: white;
+}
+.button-like.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.block {
+  display: block;
+}
+.level-table th,
+.level-table td {
+  white-space: normal;
+  vertical-align: top;
+  font-size: 12px;
+}
+.level-table td:nth-child(2) {
+  max-width: 220px;
+}

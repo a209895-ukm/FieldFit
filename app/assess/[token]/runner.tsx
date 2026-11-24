@@ -5,6 +5,7 @@ import { CANDIDATE_STEPS } from "@/lib/journey";
 import { apiFetch } from "@/lib/client-api";
 import { pageUrl } from "@/lib/navigation";
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   ArrowRight,
@@ -28,6 +29,72 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { LANGS, ROLEPLAY, type Lang } from "@/lib/assessment";
+import { questionSeconds, BRAND } from "@/lib/client-config";
+import { BrandMark } from "../../login";
+import { Calculator } from "./calculator";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+const extra = {
+  en: {
+    warnTitle: "Tab or window switch detected",
+    warnBody: (n: number, max: number) =>
+      `Warning ${n} of ${max}. Stay on this page until you submit. One more switch after the last warning submits your assessment automatically.`,
+    autoTitle: "Assessment submitted",
+    autoBody:
+      "You left the assessment page more times than allowed, so your answers were submitted automatically.",
+    understood: "I understand",
+    qTime: "for this question",
+    timeUp: "Time for this question is up. Moving on.",
+    untranslated:
+      "This question is shown in English while its translation is being reviewed.",
+    write: "Write your answer",
+    writeHint:
+      "Explain your reasoning and what you would do. At least 20 characters.",
+    calc: "Calculator",
+    rules:
+      "Before you start: close other tabs and apps. Switching tabs or windows is recorded; after the allowed warnings the assessment submits automatically. Each question has its own time limit.",
+  },
+  ms: {
+    warnTitle: "Pertukaran tab atau tetingkap dikesan",
+    warnBody: (n: number, max: number) =>
+      `Amaran ${n} daripada ${max}. Kekal di halaman ini sehingga anda menghantar. Satu lagi pertukaran selepas amaran terakhir akan menghantar penilaian anda secara automatik.`,
+    autoTitle: "Penilaian dihantar",
+    autoBody:
+      "Anda meninggalkan halaman penilaian melebihi had yang dibenarkan, jadi jawapan anda dihantar secara automatik.",
+    understood: "Saya faham",
+    qTime: "untuk soalan ini",
+    timeUp: "Masa untuk soalan ini sudah tamat. Beralih ke soalan seterusnya.",
+    untranslated:
+      "Soalan ini dipaparkan dalam bahasa Inggeris sementara terjemahannya disemak.",
+    write: "Tulis jawapan anda",
+    writeHint:
+      "Terangkan alasan anda dan apa yang akan anda lakukan. Sekurang-kurangnya 20 aksara.",
+    calc: "Kalkulator",
+    rules:
+      "Sebelum mula: tutup tab dan aplikasi lain. Pertukaran tab atau tetingkap direkodkan; selepas amaran yang dibenarkan, penilaian dihantar secara automatik. Setiap soalan mempunyai had masa sendiri.",
+  },
+  zh: {
+    warnTitle: "检测到切换标签页或窗口",
+    warnBody: (n: number, max: number) =>
+      `第 ${n} 次警告（共 ${max} 次）。提交前请留在此页面。最后一次警告后再切换，测评将自动提交。`,
+    autoTitle: "测评已提交",
+    autoBody: "你离开测评页面的次数超过允许范围，答案已自动提交。",
+    understood: "我明白了",
+    qTime: "本题剩余时间",
+    timeUp: "本题时间已到，进入下一题。",
+    untranslated: "此题的翻译正在审核中，暂以英文显示。",
+    write: "写下你的答案",
+    writeHint: "说明你的思路和你会怎么做。至少20个字符。",
+    calc: "计算器",
+    rules:
+      "开始前：请关闭其他标签页和应用。切换标签页或窗口会被记录；超过允许的警告次数后，测评将自动提交。每道题都有各自的时间限制。",
+  },
+};
 import type { Communication } from "@/lib/communication";
 import { saveAudio } from "@/lib/audio-store";
 import { QuestionVisual } from "../../question-visual";
@@ -306,7 +373,12 @@ export default function Assessment({ token }: { token: string }) {
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0),
     [seconds, setSeconds] = useState(1200),
-    [saved, setSaved] = useState(false);
+    [saved, setSaved] = useState(false),
+    [written, setWritten] = useState<Record<string, string>>({}),
+    [warning, setWarning] = useState<null | { n: number; max: number; auto?: boolean }>(null),
+    [qLeft, setQLeft] = useState<number | null>(null),
+    [calcOpen, setCalcOpen] = useState(false);
+  const x = extra[lang];
   const locked = useRef(false);
   const t = copy[lang];
   const total = data?.questions.length ?? 12;
@@ -347,10 +419,13 @@ export default function Assessment({ token }: { token: string }) {
       setLang(d.language);
       setAnswers(d.answers);
       setConversation(d.conversation);
+      setWritten(d.written ?? {});
       setComm(d.communication ?? emptyComm(d.speaking ? "voice" : "typed"));
       setRevision(d.revision);
-      const first = d.questions.findIndex(
-        (q: any) => d.answers[q.id] === undefined,
+      const first = d.questions.findIndex((q: any) =>
+        q.format === "open"
+          ? String(d.written?.[q.id] ?? "").trim().length < 20
+          : d.answers[q.id] === undefined,
       );
       setIndex(first >= 0 ? first : d.questions.length);
     } catch (e: any) {
@@ -383,12 +458,37 @@ export default function Assessment({ token }: { token: string }) {
     return () => clearInterval(timer);
   }, [data?.started, data?.status]);
   useEffect(() => {
-    if (data?.status !== "In progress" || demo) return;
-    const event = () => {
-      if (document.hidden) request("event", {}).catch(() => {});
+    if (data?.status !== "In progress") return;
+    // Leaving the tab (visibilitychange) or clicking into another window or
+    // monitor (blur) counts once; events within 1.5 s are treated as one switch.
+    let last = 0;
+    const report = async () => {
+      if (Date.now() - last < 1500) return;
+      last = Date.now();
+      if (demo) {
+        setWarning((w) => ({ n: (w?.n ?? 0) + 1, max: 2 }));
+        return;
+      }
+      try {
+        const r = await request("event", {});
+        if (r.status === "Completed") {
+          setWarning({ n: r.switches, max: r.max, auto: true });
+          setData((d: any) => ({ ...d, status: "Completed" }));
+        } else setWarning({ n: r.switches, max: r.max });
+      } catch {
+        /* the next save reports connection problems */
+      }
     };
-    document.addEventListener("visibilitychange", event);
-    return () => document.removeEventListener("visibilitychange", event);
+    const hidden = () => {
+      if (document.hidden) report();
+    };
+    const blur = () => report();
+    document.addEventListener("visibilitychange", hidden);
+    window.addEventListener("blur", blur);
+    return () => {
+      document.removeEventListener("visibilitychange", hidden);
+      window.removeEventListener("blur", blur);
+    };
   }, [data?.status]);
   useEffect(() => {
     if (seconds === 0 && data?.status === "In progress") save("submit", true);
@@ -448,6 +548,7 @@ export default function Assessment({ token }: { token: string }) {
       } else {
         const r = await request(action, {
           answers,
+          written,
           conversation,
           communication: data?.listening || data?.speaking ? current : null,
           revision,
@@ -502,14 +603,45 @@ export default function Assessment({ token }: { token: string }) {
     if (mode === "typed" && comm.mode === "voice") setConversation("");
     setSaved(false);
   }
+  const saveRef = useRef(save);
+  saveRef.current = save;
   const q = index < total ? data?.questions[index] : null;
+  const answered = (item: any) =>
+    item.format === "open"
+      ? String(written[item.id] ?? "").trim().length >= 20
+      : answers[item.id] !== undefined;
+  const answeredCount = (data?.questions ?? []).filter(answered).length;
+  // Per-question time limit. Resets when the candidate moves to another question.
+  useEffect(() => {
+    if (!q || data?.status !== "In progress") {
+      setQLeft(null);
+      return;
+    }
+    const limit = questionSeconds(q);
+    const startedAt = Date.now();
+    setQLeft(limit);
+    const timer = setInterval(() => {
+      const left = Math.max(
+        0,
+        limit - Math.floor((Date.now() - startedAt) / 1000),
+      );
+      setQLeft(left);
+      if (left === 0) {
+        clearInterval(timer);
+        toast(extra[lang].timeUp);
+        saveRef.current("save", false, index + 1);
+      }
+    }, 1000);
+    setCalcOpen(false);
+    return () => clearInterval(timer);
+  }, [index, q?.id, data?.status]);
   const steps = total + (listening?.questions.length ?? 0) + 1;
   const done =
-    Object.keys(answers).length +
+    answeredCount +
     Object.keys(comm.listening.answers).length +
     (replyDone ? 1 : 0);
   const canContinue = q
-    ? answers[q.id] !== undefined
+    ? answered(q)
     : index === LISTEN
       ? listenDone
       : replyDone;
@@ -531,10 +663,7 @@ export default function Assessment({ token }: { token: string }) {
   return (
     <div className="assessment-page">
       <header className="assessment-header">
-        <a href={pageUrl("/")} className="brand">
-          <span className="brand-mark">ff</span>FieldFit
-          <span className="brand-dot">.</span>
-        </a>
+        <BrandMark />
         <span>
           <ShieldCheck size={16} /> {t.draft}
         </span>
@@ -608,7 +737,10 @@ export default function Assessment({ token }: { token: string }) {
             <div className="journey-ticket">
               <CheckCircle2 />
               <div>
-                <strong>Sales representative assessment</strong>
+                <strong>
+                  {data.roleTitle ?? "Sales representative"} assessment
+                </strong>
+                <span>{BRAND.company}</span>
                 <span>
                   {total} questions · listening & customer communication
                 </span>
@@ -674,6 +806,10 @@ export default function Assessment({ token }: { token: string }) {
               <ShieldCheck />
               <p>{t.privacy}</p>
             </div>
+            <div className="privacy">
+              <Clock3 />
+              <p>{x.rules}</p>
+            </div>
             <label className="consent">
               <Checkbox
                 checked={consent}
@@ -708,6 +844,16 @@ export default function Assessment({ token }: { token: string }) {
                   </span>
                   <div className="status-right">
                     {languagePicker}
+                    {qLeft !== null && (
+                      <span
+                        className={
+                          "question-timer " + (qLeft <= 15 ? "urgent" : "")
+                        }
+                      >
+                        {Math.floor(qLeft / 60)}:
+                        {String(qLeft % 60).padStart(2, "0")} {x.qTime}
+                      </span>
+                    )}
                     <strong className={seconds < 120 ? "urgent" : ""}>
                       <Clock3 size={15} />
                       {Math.floor(seconds / 60)}:
@@ -722,10 +868,45 @@ export default function Assessment({ token }: { token: string }) {
                     <div className="eyebrow">
                       {t.question} {index + 1} {t.of} {total}
                     </div>
-                    <h1>{q.prompt[lang]}</h1>
+                    {q.translated === false && lang !== "en" && (
+                      <p className="muted small">{x.untranslated}</p>
+                    )}
+                    <h1 className="question-prompt">{q.prompt[lang]}</h1>
                     {q.visual && (
                       <QuestionVisual visual={q.visual} lang={lang} />
                     )}
+                    {q.cap === 0 && q.format !== "open" && (
+                      <div className="calc-wrap">
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => setCalcOpen(!calcOpen)}
+                        >
+                          {x.calc}
+                        </button>
+                        {calcOpen && <Calculator />}
+                      </div>
+                    )}
+                    {q.format === "open" ? (
+                      <>
+                        <label className="form-label" htmlFor={"w-" + q.id}>
+                          {x.write}
+                        </label>
+                        <textarea
+                          id={"w-" + q.id}
+                          value={written[q.id] ?? ""}
+                          maxLength={6000}
+                          placeholder={x.writeHint}
+                          onChange={(e) => {
+                            setWritten({ ...written, [q.id]: e.target.value });
+                            setSaved(false);
+                          }}
+                        />
+                        <small className="muted">
+                          {(written[q.id] ?? "").length}/6000 · {x.writeHint}
+                        </small>
+                      </>
+                    ) : (
                     <RadioGroup
                       value={
                         answers[q.id] === undefined ? "" : String(answers[q.id])
@@ -751,6 +932,7 @@ export default function Assessment({ token }: { token: string }) {
                         </label>
                       ))}
                     </RadioGroup>
+                    )}
                   </>
                 ) : index === LISTEN ? (
                   <>
@@ -908,11 +1090,9 @@ export default function Assessment({ token }: { token: string }) {
                         <button
                           key={item.id}
                           onClick={() => setIndex(i)}
-                          className={
-                            answers[item.id] === undefined ? "missing" : ""
-                          }
+                          className={answered(item) ? "" : "missing"}
                         >
-                          {i + 1} {answers[item.id] !== undefined ? "✓" : "—"}
+                          {i + 1} {answered(item) ? "✓" : "—"}
                         </button>
                       ))}
                       {listening && (
@@ -946,7 +1126,7 @@ export default function Assessment({ token }: { token: string }) {
                     <Button
                       disabled={
                         busy ||
-                        Object.keys(answers).length !== total ||
+                        answeredCount !== total ||
                         !listenDone ||
                         !replyDone
                       }
@@ -970,6 +1150,21 @@ export default function Assessment({ token }: { token: string }) {
           )
         )}
       </main>
+      <Dialog open={!!warning} onOpenChange={(v) => !v && setWarning(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {warning?.auto ? x.autoTitle : x.warnTitle}
+            </DialogTitle>
+            <DialogDescription>
+              {warning?.auto
+                ? x.autoBody
+                : x.warnBody(warning?.n ?? 1, warning?.max ?? 2)}
+            </DialogDescription>
+          </DialogHeader>
+          <Button onClick={() => setWarning(null)}>{x.understood}</Button>
+        </DialogContent>
+      </Dialog>
       <div className="assessment-footer">
         FieldFit · Every candidate, measured the same way.
       </div>

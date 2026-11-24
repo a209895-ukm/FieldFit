@@ -333,8 +333,10 @@ export function Approvals({
                 </span>
               </div>
               <p className="journey-muted">
-                Average uses the six capability scores. Customer communication
-                is reviewed separately.
+                Average uses the six capability scores, weighted by job level
+                (Entry, Junior, Senior). Any answer scored as a policy breach
+                or fraud always goes to HR. Customer communication is reviewed
+                separately.
               </p>
             </section>
             <section className="journey-panel">
@@ -345,9 +347,12 @@ export function Approvals({
                 <Button variant="outline" onClick={() => setCalendar(true)}>
                   {state.calendarPreview
                     ? "Calendar preview active"
-                    : "Preview Google Calendar"}
+                    : "Preview Outlook sync"}
                 </Button>
-                <span>or add times manually below</span>
+                <span>
+                  or add times manually below (MVP default until IT confirms
+                  Outlook access)
+                </span>
               </div>
               <div className="journey-form-grid two">
                 <label>
@@ -638,7 +643,10 @@ export function Approvals({
                         onClick={() => onProfile(c.id)}
                       >
                         {c.name}
-                        <small>{c.email}</small>
+                        <small>
+                          {c.email}
+                          {c.roleTitle ? " · " + c.roleTitle : ""}
+                        </small>
                       </button>
                       <strong>
                         {Math.round(o.average)}
@@ -1029,10 +1037,11 @@ export function Approvals({
       <Dialog open={calendar} onOpenChange={setCalendar}>
         <DialogContent className="journey-dialog">
           <DialogHeader>
-            <DialogTitle>Google Calendar · frontend preview</DialogTitle>
+            <DialogTitle>Outlook calendar sync · frontend preview</DialogTitle>
             <DialogDescription>
-              Explore how connected availability will look. No Google account is
-              connected.
+              Option 1 from the client meeting: candidates pick live free slots
+              from HR’s Outlook calendar. No Microsoft account is connected; this
+              needs approval from the client’s IT team (Microsoft Graph access).
             </DialogDescription>
           </DialogHeader>
           <div className="journey-info">

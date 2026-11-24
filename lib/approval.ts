@@ -1,3 +1,4 @@
+import { weightedScore, type Level } from "./client-config.ts";
 export type ApprovalRules = {
   automatic: boolean;
   benchmark: number;
@@ -18,6 +19,8 @@ export type ApprovalCandidate = {
   scores: number[];
   kind?: string;
   decision?: { decision: string };
+  level?: Level | null;
+  flags?: { id: string; severity: string }[];
 };
 export function approvalOutcome(c: ApprovalCandidate, rules: ApprovalRules) {
   if (c.kind === "employee" || c.status !== "Completed")
@@ -33,7 +36,16 @@ export function approvalOutcome(c: ApprovalCandidate, rules: ApprovalRules) {
     c.scores.some((n) => !Number.isFinite(n) || n < 0 || n > 100)
   )
     return { route: "review", average: 0, reason: "Incomplete score profile" };
-  const average = c.scores.reduce((a, b) => a + b, 0) / 6;
+  // Weighted by the client's capability weights for the job level.
+  const average = c.level
+    ? weightedScore(c.scores, c.level)
+    : c.scores.reduce((a, b) => a + b, 0) / 6;
+  if (c.flags?.length)
+    return {
+      route: "review",
+      average,
+      reason: `Integrity flag: ${c.flags.length} answer${c.flags.length > 1 ? "s" : ""} scored as policy breach or fraud`,
+    };
   const low = Math.min(...c.scores),
     high = Math.max(...c.scores);
   // Exceptions take precedence, even when the overall benchmark is met.
@@ -66,27 +78,56 @@ export type InterviewInvite = {
   booked?: string;
   reason?: string;
 };
-export function googleCalendarUrl(
+function eventTimes(invite: InterviewInvite) {
+  const start = new Date(invite.booked!),
+    end = new Date(start.getTime() + invite.duration * 60000);
+  return { start, end };
+}
+/** Opens a prepared event in Outlook on the web. Nothing is saved until the user saves it. */
+export function outlookCalendarUrl(
   c: ApprovalCandidate,
   invite: InterviewInvite,
 ) {
   if (!invite.booked) return "";
-  const start = new Date(invite.booked),
-    end = new Date(start.getTime() + invite.duration * 60000);
+  const { start, end } = eventTimes(invite);
+  return (
+    "https://outlook.office.com/calendar/0/deeplink/compose?" +
+    new URLSearchParams({
+      path: "/calendar/action/compose",
+      rru: "addevent",
+      subject: `FieldFit · Interview · ${c.name}`,
+      startdt: start.toISOString(),
+      enddt: end.toISOString(),
+      body: "Interview with the FieldFit hiring team.",
+      location: invite.location,
+      to: `${invite.host};${c.email}`,
+    })
+  );
+}
+/** An .ics file that opens in the Outlook desktop app (or any calendar). */
+export function calendarFile(c: ApprovalCandidate, invite: InterviewInvite) {
+  const { start, end } = eventTimes(invite);
   const stamp = (date: Date) =>
     date
       .toISOString()
       .replace(/[-:]/g, "")
       .replace(/\.\d{3}/, "");
-  return (
-    "https://calendar.google.com/calendar/render?" +
-    new URLSearchParams({
-      action: "TEMPLATE",
-      text: `FieldFit · Second interview · ${c.name}`,
-      dates: `${stamp(start)}/${stamp(end)}`,
-      details: "Second interview with the FieldFit hiring team.",
-      location: invite.location,
-      add: `${invite.host},${c.email}`,
-    })
-  );
+  const text = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//FieldFit//Interview//EN",
+    "METHOD:REQUEST",
+    "BEGIN:VEVENT",
+    `UID:${c.id}-${stamp(start)}@fieldfit`,
+    `DTSTAMP:${stamp(new Date())}`,
+    `DTSTART:${stamp(start)}`,
+    `DTEND:${stamp(end)}`,
+    `SUMMARY:FieldFit · Interview · ${c.name}`,
+    `LOCATION:${invite.location}`,
+    `ORGANIZER:mailto:${invite.host}`,
+    `ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:${c.email}`,
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+  return new Blob([text], { type: "text/calendar;charset=utf-8" });
 }

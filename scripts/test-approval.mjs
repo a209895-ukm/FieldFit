@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import {
   approvalOutcome,
   APPROVAL_DEFAULTS,
-  googleCalendarUrl,
+  outlookCalendarUrl,
+  calendarFile,
 } from "../lib/approval.ts";
 const c = {
   id: "test",
@@ -73,17 +74,38 @@ const invite = {
   source: "HR",
   created: "2026-11-02",
 };
-const url = new URL(googleCalendarUrl(c, invite));
+const url = new URL(outlookCalendarUrl(c, invite));
+assert.equal(url.hostname, "outlook.office.com");
+assert.equal(url.searchParams.get("startdt"), "2026-12-01T02:00:00.000Z");
+assert.equal(url.searchParams.get("enddt"), "2026-12-01T02:45:00.000Z");
 assert.equal(
-  url.searchParams.get("dates"),
-  "20261201T020000Z/20261201T024500Z",
-);
-assert.equal(
-  url.searchParams.get("add"),
-  "hr@example.test,candidate@example.test",
+  url.searchParams.get("to"),
+  "hr@example.test;candidate@example.test",
 );
 assert.equal(url.searchParams.get("location"), "Office & online");
-assert.equal(googleCalendarUrl(c, { ...invite, booked: undefined }), "");
+assert.equal(outlookCalendarUrl(c, { ...invite, booked: undefined }), "");
+const ics = await calendarFile(c, invite).text();
+assert.match(ics, /DTSTART:20261201T020000Z/);
+assert.match(ics, /ATTENDEE;ROLE=REQ-PARTICIPANT:mailto:candidate@example.test/);
+// Client rules: capability weights by job level and integrity flags.
+assert.equal(
+  Math.round(
+    approvalOutcome(
+      { ...c, level: "Entry", scores: [60, 60, 90, 60, 90, 60] },
+      { ...APPROVAL_DEFAULTS, spread: 100, minimum: 0 },
+    ).average,
+  ),
+  75,
+  "Entry weights: SJT and self-leadership count 25% each",
+);
+assert.equal(
+  approvalOutcome(
+    { ...c, flags: [{ id: "YLM-SJT-E2", severity: "Fraud" }] },
+    APPROVAL_DEFAULTS,
+  ).route,
+  "review",
+  "An integrity flag always goes to HR",
+);
 console.log(
   "Approval routing, exception precedence, boundaries and calendar draft checks passed.",
 );

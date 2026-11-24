@@ -36,6 +36,15 @@ export type Question = {
   /** Bank revision. A stored copy with a lower revision is replaced by the bank version. */
   rev?: number;
   visual?: Visual;
+  /** Job level the item was written for. Items without a level are general items. */
+  level?: "Entry" | "Junior" | "Senior";
+  /** single = one correct answer, weighted = judgement (+1 / 0 / -0.5 / -1 / -2), open = written answer marked by a reviewer. */
+  format?: "single" | "weighted" | "open";
+  /** false while the BM and Mandarin text still shows English. */
+  translated?: boolean;
+  source?: string | null;
+  rubric?: string | null;
+  client?: boolean;
 };
 export type Rules = {
   proficient: number;
@@ -43,6 +52,8 @@ export type Rules = {
   core: number[];
   minutes: number;
   version: number;
+  /** Tab or window switches allowed with a warning; the next one submits the assessment. */
+  maxWarnings?: number;
 };
 export const DEFAULT_RULES: Rules = {
   proficient: 60,
@@ -50,6 +61,7 @@ export const DEFAULT_RULES: Rules = {
   core: [2, 4],
   minutes: 20,
   version: 1,
+  maxWarnings: 2,
 };
 /**
  * Brings a workspace's saved question bank up to date with this release:
@@ -68,6 +80,9 @@ export function upgradeSettings(
       ? { ...structuredClone(b), enabled: q.enabled }
       : q;
   });
+  const known = new Set(questions.map((q) => q.id));
+  for (const b of bank)
+    if (!known.has(b.id)) questions.push(structuredClone(b));
   const rules =
     settings.rules.version === 1 && settings.rules.minutes === 40
       ? { ...settings.rules, minutes: DEFAULT_RULES.minutes }
@@ -84,7 +99,11 @@ function shuffled<T>(items: T[], random: () => number) {
 }
 /** Reorders a question's answers; options and points move together in every language. */
 export function shuffleOptions(q: Question, random: () => number): Question {
-  const order = shuffled([0, 1, 2, 3], random);
+  if (!q.options.en.length) return q;
+  const order = shuffled(
+    q.options.en.map((_, i) => i),
+    random,
+  );
   return {
     ...q,
     options: {
@@ -106,32 +125,103 @@ export const RUBRIC = [
   "Offers an honest, feasible solution",
   "Agrees a clear follow-up",
 ];
+const defaultRandom = () =>
+  crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+/**
+ * Picks an invitation's questions. With a blueprint (job level), items written for that level come first,
+ * topped up with general items; open-ended items are drawn from different capabilities.
+ * Without one, two items per capability (original MVP behaviour).
+ */
 export function chooseQuestions(
   bank: Question[],
-  random = () => crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296,
+  random: (() => number) | null = defaultRandom,
+  blueprint?: { level: string; perCap: number[]; open: number },
 ) {
-  const picked = CAPS.flatMap((_, cap) =>
-    shuffled(
-      bank.filter((q) => q.cap === cap && q.enabled),
-      random,
-    ).slice(0, 2),
+  const rnd = random ?? defaultRandom;
+  const active = bank.filter((q) => q.enabled);
+  if (!blueprint) {
+    const picked = CAPS.flatMap((_, cap) =>
+      shuffled(
+        active.filter((q) => q.cap === cap && !q.level && q.format !== "open"),
+        rnd,
+      ).slice(0, 2),
+    );
+    return shuffled(picked, rnd).map((q) => shuffleOptions(q, rnd));
+  }
+  const picked = CAPS.flatMap((_, cap) => {
+    const choice = active.filter(
+      (q) => q.cap === cap && q.format !== "open",
+    );
+    const own = shuffled(
+      choice.filter((q) => q.level === blueprint.level),
+      rnd,
+    );
+    const general = shuffled(
+      choice.filter((q) => !q.level),
+      rnd,
+    );
+    return [...own, ...general].slice(0, blueprint.perCap[cap] ?? 0);
+  });
+  const open = shuffled(
+    active.filter(
+      (q) => q.format === "open" && q.level === blueprint.level,
+    ),
+    rnd,
   );
-  // Each invitation gets its own question order and answer order.
-  return shuffled(picked, random).map((q) => shuffleOptions(q, random));
+  const openPicked: Question[] = [];
+  for (const q of open)
+    if (
+      openPicked.length < blueprint.open &&
+      !openPicked.some((p) => p.cap === q.cap)
+    )
+      openPicked.push(q);
+  // Multiple-choice first in random order, open-ended items at the end.
+  return [
+    ...shuffled(picked, rnd).map((q) => shuffleOptions(q, rnd)),
+    ...openPicked,
+  ];
 }
+/**
+ * Capability scores out of 100. Judgement items can carry negative points (-50, -100, -200);
+ * a capability score never goes below 0. Open-ended items count once a reviewer marks them
+ * (Full 100, Partial 50, No credit 0); until then they are left out.
+ */
 export function scoreAnswers(
   questions: Question[],
   answers: Record<string, number>,
+  openMarks: Record<string, number> = {},
 ) {
   return CAPS.map((_, cap) => {
-    const qs = questions.filter((q) => q.cap === cap);
-    return qs.length
-      ? Math.round(
-          qs.reduce((sum, q) => sum + (q.points[answers[q.id]] ?? 0), 0) /
-            qs.length,
+    const values = questions
+      .filter((q) => q.cap === cap)
+      .map((q) =>
+        q.format === "open" ? openMarks[q.id] : (q.points[answers[q.id]] ?? 0),
+      )
+      .filter((v): v is number => typeof v === "number");
+    return values.length
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+          ),
         )
       : 0;
   });
+}
+/** Answers the client scores as a policy breach (-1.0) or fraud / falsifying data (-2.0). */
+export function integrityFlags(
+  questions: Question[],
+  answers: Record<string, number>,
+) {
+  return questions
+    .filter((q) => q.format !== "open" && (q.points[answers[q.id]] ?? 0) <= -100)
+    .map((q) => ({
+      id: q.id,
+      cap: q.cap,
+      points: q.points[answers[q.id]],
+      severity: q.points[answers[q.id]] <= -200 ? "Fraud" : "Policy breach",
+    }));
 }
 export function profile(scores: number[], rules: Rules) {
   return scores.map((score, cap) => ({

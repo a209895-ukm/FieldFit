@@ -7,8 +7,19 @@ import {
   scoreAnswers,
   csvCell,
   upgradeSettings,
+  integrityFlags,
 } from "./assessment.ts";
-import { QUESTIONS } from "./question-bank.ts";
+import { QUESTIONS as GENERAL_QUESTIONS } from "./question-bank.ts";
+import { CLIENT_QUESTIONS } from "./client-bank.ts";
+import {
+  BLUEPRINTS,
+  DEFAULT_MAX_WARNINGS,
+  STAFF_ROLES,
+  roleById,
+  weightedScore,
+} from "./client-config.ts";
+import { DEFAULT_USERS, SESSION_KEY, type StaffUser } from "./session.ts";
+const QUESTIONS = [...GENERAL_QUESTIONS, ...CLIENT_QUESTIONS];
 import {
   COMMUNICATION_COLUMNS,
   communicationCells,
@@ -27,6 +38,7 @@ type DemoState = {
   settings: { rules: typeof DEFAULT_RULES; questions: typeof QUESTIONS };
   candidates: any[];
   audit: any[];
+  users?: StaffUser[];
 };
 const id = () => crypto.randomUUID();
 const accessToken = () =>
@@ -34,18 +46,20 @@ const accessToken = () =>
     n.toString(16).padStart(2, "0"),
   ).join("");
 const safeQuestions = (questions: typeof QUESTIONS) =>
-  questions.map(({ points, explanation, ...question }) => question);
+  questions.map(({ points, explanation, rubric, ...question }) => question);
 
 /** GitHub Pages sandbox. All state is local to this browser; no records are sent to a server. */
 export function createDemoTransport(
   storage: Pick<Storage, "getItem" | "setItem">,
   clock = Date.now,
+  session: () => string | null = () => storage.getItem(SESSION_KEY),
 ) {
   function read(): DemoState {
     const raw = storage.getItem(KEY);
     if (raw) {
       const state: DemoState = JSON.parse(raw);
       state.settings = upgradeSettings(state.settings, QUESTIONS);
+      state.users ??= structuredClone(DEFAULT_USERS);
       return state;
     }
     return {
@@ -55,6 +69,7 @@ export function createDemoTransport(
       },
       candidates: [],
       audit: [],
+      users: structuredClone(DEFAULT_USERS),
     };
   }
   const iso = () => new Date(clock()).toISOString();
@@ -67,12 +82,23 @@ export function createDemoTransport(
         (c) => Date.parse(c.created) > cutoff,
       );
       const path = url.replace(/^\/api\//, "").split("/");
+      const email = session();
+      const user =
+        state.users!.find((u) => u.email === email) ??
+        // Older demo records and automated checks act as the Master Admin.
+        (email ? null : state.users!.find((u) => u.role === "admin")!);
+      const staff = path[0] !== "assessment" && path[0] !== "demo";
+      if (staff && !user)
+        return json({ error: "Sign in with a staff account first." }, 401);
+      const can = (...roles: string[]) => !!user && roles.includes(user.role);
+      const visible = (c: any) =>
+        user?.role !== "manager" || c.manager === user.email;
       const input = options.body ? JSON.parse(String(options.body)) : {};
       const post = options.method === "POST";
       const audit = (action: string, record: string | null = null) =>
         state.audit.unshift({
           id: id(),
-          actor: "Demo employer",
+          actor: user ? `${user.name} (${STAFF_ROLES[user.role].label})` : "Candidate",
           action,
           record,
           created: iso(),
@@ -99,15 +125,43 @@ export function createDemoTransport(
       if (path[0] === "workspace")
         return json({
           ...state,
-          candidates: activeCandidates,
-          audit: state.audit.slice(0, 80),
-          user: { name: "Demo employer", role: "admin" },
+          candidates: activeCandidates.filter(visible),
+          audit: can("admin", "hr") ? state.audit.slice(0, 80) : [],
+          users: can("admin") ? state.users : state.users!.map(({ email, name, role }) => ({ email, name, role })),
+          user,
         });
+      if (path[0] === "users" && post) {
+        if (!can("admin"))
+          return fail("Only the Master Admin can manage user accounts.", 403);
+        const target = String(input.email ?? "").trim().toLowerCase();
+        if (!/^\S+@\S+\.\S+$/.test(target)) return fail("Enter a valid company email address.");
+        if (input.remove) {
+          if (target === user!.email) return fail("You cannot remove your own account.");
+          state.users = state.users!.filter((u) => u.email !== target);
+          audit("user.removed", target);
+        } else {
+          if (!(input.role in STAFF_ROLES) || !String(input.name ?? "").trim())
+            return fail("Enter a name and choose a role.");
+          const existing = state.users!.find((u) => u.email === target);
+          if (existing) Object.assign(existing, { name: input.name.trim(), role: input.role });
+          else state.users!.push({ email: target, name: input.name.trim(), role: input.role });
+          audit(existing ? "user.updated" : "user.added", target);
+        }
+        save();
+        return json({ ok: true });
+      }
       if (path[0] === "candidates" && post && path.length === 1) {
+        if (!can("admin", "hr"))
+          return fail("Only HR or the Master Admin can send invitations.", 403);
         if (!input.name?.trim() || !/^\S+@\S+\.\S+$/.test(input.email ?? ""))
           return fail(
             "Enter a name and a valid email address. Use fictional details in this demo.",
           );
+        const job = roleById(input.role);
+        const blueprint = BLUEPRINTS[job.level];
+        const manager = state.users!.find(
+          (u) => u.email === input.manager && u.role === "manager",
+        );
         const token = accessToken();
         const candidate = {
           id: id(),
@@ -116,6 +170,16 @@ export function createDemoTransport(
           kind: input.kind,
           performance: input.performance,
           language: input.language,
+          role: job.id,
+          roleTitle: job.title,
+          level: job.level,
+          manager: manager?.email ?? null,
+          managerName: manager?.name ?? null,
+          invitedBy: user!.name,
+          written: {},
+          openMarks: {},
+          flags: [],
+          autoSubmitted: null,
           status: "Invited",
           created: iso(),
           expires: new Date(clock() + 7 * 86400000).toISOString(),
@@ -132,8 +196,18 @@ export function createDemoTransport(
           switches: 0,
           revision: 0,
           assessment: {
-            questions: chooseQuestions(state.settings.questions),
-            rules: structuredClone(state.settings.rules),
+            questions: chooseQuestions(state.settings.questions, null, {
+              level: job.level,
+              perCap: blueprint.perCap,
+              open: blueprint.open,
+            }),
+            rules: {
+              ...structuredClone(state.settings.rules),
+              minutes: blueprint.minutes,
+              maxWarnings:
+                state.settings.rules.maxWarnings ?? DEFAULT_MAX_WARNINGS,
+            },
+            blueprint: { level: job.level, ...blueprint },
             listening: LISTENING,
             speaking: SPEAKING,
           },
@@ -154,10 +228,16 @@ export function createDemoTransport(
           );
         if (Date.parse(candidate.expires) <= clock())
           return fail("This demo invitation has expired.", 410);
-        const complete = () => {
+        const complete = (reason: string | null = null) => {
           candidate.status = "Completed";
           candidate.submitted = iso();
+          candidate.autoSubmitted = reason;
           candidate.scores = scoreAnswers(
+            candidate.assessment.questions,
+            candidate.answers,
+            candidate.openMarks ?? {},
+          );
+          candidate.flags = integrityFlags(
             candidate.assessment.questions,
             candidate.answers,
           );
@@ -170,9 +250,16 @@ export function createDemoTransport(
             Date.parse(candidate.started) +
               candidate.assessment.rules.minutes * 60000
         )
-          complete();
+          complete("time limit");
         if (!post)
           return json({
+            roleTitle: candidate.roleTitle ?? null,
+            level: candidate.level ?? null,
+            written: candidate.written ?? {},
+            switches: candidate.switches ?? 0,
+            maxWarnings:
+              candidate.assessment.rules.maxWarnings ?? DEFAULT_MAX_WARNINGS,
+            autoSubmitted: candidate.autoSubmitted ?? null,
             name: candidate.name,
             status: candidate.status,
             language: candidate.language,
@@ -210,8 +297,15 @@ export function createDemoTransport(
           return fail("Start the assessment first.");
         if (path[2] === "event") {
           candidate.switches++;
+          const max =
+            candidate.assessment.rules.maxWarnings ?? DEFAULT_MAX_WARNINGS;
+          if (candidate.switches > max) {
+            audit("assessment.auto-submitted", candidate.id);
+            complete("tab switches");
+            return json({ ok: true, switches: candidate.switches, max, status: "Completed" });
+          }
           save();
-          return json({ ok: true });
+          return json({ ok: true, switches: candidate.switches, max, status: candidate.status });
         }
         if (path[2] === "save" || path[2] === "submit") {
           if (input.revision !== candidate.revision)
@@ -232,6 +326,19 @@ export function createDemoTransport(
             )
           )
             return fail("Invalid answer.");
+          const written = input.written ?? {};
+          if (
+            typeof written !== "object" ||
+            Object.entries(written).some(
+              ([key, value]) =>
+                !candidate.assessment.questions.some(
+                  (q: any) => q.id === key && q.format === "open",
+                ) ||
+                typeof value !== "string" ||
+                value.length > 6000,
+            )
+          )
+            return fail("Invalid written answer.");
           if (
             typeof input.conversation !== "string" ||
             input.conversation.length > 6000
@@ -254,8 +361,10 @@ export function createDemoTransport(
             return fail("Invalid answer.");
           if (
             path[2] === "submit" &&
-            (!candidate.assessment.questions.every(
-              (q: any) => answers[q.id] !== undefined,
+            (!candidate.assessment.questions.every((q: any) =>
+              q.format === "open"
+                ? String(written[q.id] ?? "").trim().length >= 20
+                : answers[q.id] !== undefined,
             ) ||
               (listening &&
                 !listening.questions.every(
@@ -271,6 +380,7 @@ export function createDemoTransport(
               "Complete every question and give your customer reply before submitting.",
             );
           candidate.answers = answers;
+          candidate.written = written;
           candidate.conversation = input.conversation;
           candidate.communication = comm;
           candidate.revision++;
@@ -285,7 +395,13 @@ export function createDemoTransport(
       }
       if (path[0] === "candidates" && post) {
         const candidate = state.candidates.find((c) => c.id === path[1]);
-        if (!candidate) return fail("Candidate not found.", 404);
+        if (!candidate || !visible(candidate))
+          return fail("Candidate not found.", 404);
+        if (
+          !can("admin", "hr") &&
+          !["review", "decision", "open-review"].includes(path[2])
+        )
+          return fail("Hiring managers can review and decide only.", 403);
         if (path[2] === "reissue") {
           if (candidate.status === "Completed")
             return fail("Completed assessments cannot be reopened.");
@@ -298,6 +414,8 @@ export function createDemoTransport(
             communication: null,
             revision: 0,
             switches: 0,
+            written: {},
+            autoSubmitted: null,
             expires: new Date(clock() + 7 * 86400000).toISOString(),
           });
           audit("invitation.reissued", candidate.id);
@@ -338,10 +456,28 @@ export function createDemoTransport(
                 100,
             ),
             rubric: RUBRIC,
-            by: "Demo employer",
+            by: user!.name,
             at: iso(),
             method: "human-rubric",
+            ai: input.ai ?? null,
           };
+        } else if (path[2] === "open-review") {
+          const marks = input.marks ?? {};
+          if (
+            Object.entries(marks).some(
+              ([key, value]) =>
+                !candidate.assessment.questions.some(
+                  (q: any) => q.id === key && q.format === "open",
+                ) || ![0, 50, 100].includes(Number(value)),
+            )
+          )
+            return fail("Mark each open-ended answer Full, Partial or No credit.");
+          candidate.openMarks = { ...(candidate.openMarks ?? {}), ...marks };
+          candidate.scores = scoreAnswers(
+            candidate.assessment.questions,
+            candidate.answers,
+            candidate.openMarks,
+          );
         } else if (path[2] === "decision") {
           if (
             !["Interview", "Hold", "Hire", "Do not proceed"].includes(
@@ -353,7 +489,7 @@ export function createDemoTransport(
             return fail(
               "Choose a decision and record at least 10 characters of reasons.",
             );
-          candidate.decision = { ...input, by: "Demo employer", at: iso() };
+          candidate.decision = { ...input, by: user!.name, at: iso() };
         } else if (path[2] === "outcome") {
           if (candidate.decision?.decision !== "Hire")
             return fail("Record a Hire decision first.");
@@ -367,7 +503,7 @@ export function createDemoTransport(
             return fail("Check the follow-up values.");
           candidate.outcomes = [
             ...candidate.outcomes.filter((o: any) => o.month !== input.month),
-            { ...input, by: "Demo employer", at: iso() },
+            { ...input, by: user!.name, at: iso() },
           ];
         } else return fail("Action not found.", 404);
         audit(path[2] + ".recorded", candidate.id);
@@ -375,7 +511,13 @@ export function createDemoTransport(
         return json({ ok: true });
       }
       if (path[0] === "settings" && post) {
+        if (!can("admin", "hr"))
+          return fail("Only HR or the Master Admin can change settings.", 403);
         if (
+          (input.rules?.maxWarnings !== undefined &&
+            (!Number.isInteger(input.rules.maxWarnings) ||
+              input.rules.maxWarnings < 0 ||
+              input.rules.maxWarnings > 5)) ||
           !input.rules ||
           !Array.isArray(input.questions) ||
           input.rules.proficient < 1 ||
@@ -388,8 +530,9 @@ export function createDemoTransport(
         if (
           !CAPS.every(
             (_, cap) =>
-              input.questions.filter((q: any) => q.cap === cap && q.enabled)
-                .length >= 2,
+              input.questions.filter(
+                (q: any) => q.cap === cap && q.enabled && q.format !== "open",
+              ).length >= 2,
           )
         )
           return fail("Keep at least two active questions per capability.");
@@ -405,21 +548,33 @@ export function createDemoTransport(
             "Name",
             "Email",
             "Type",
+            "Job role",
+            "Job level",
+            "Hiring manager",
             "Language",
             "Status",
             ...CAPS,
+            "Weighted score",
+            "Integrity flags",
+            "Tab switches",
             "Conversation review",
             ...COMMUNICATION_COLUMNS,
             "Decision",
             "Reason",
           ],
-          ...activeCandidates.map((c) => [
+          ...activeCandidates.filter(visible).map((c) => [
             c.name,
             c.email,
             c.kind,
+            c.roleTitle ?? "",
+            c.level ?? "",
+            c.managerName ?? "",
             LANGS[c.language as keyof typeof LANGS],
             c.status,
             ...(c.scores.length ? c.scores : Array(6).fill("")),
+            c.scores.length ? Math.round(weightedScore(c.scores, c.level)) : "",
+            (c.flags ?? []).map((f: any) => `${f.id} ${f.severity}`).join("; "),
+            c.switches ?? 0,
             c.review?.score ?? "Pending",
             ...communicationCells(c),
             c.decision?.decision ?? "",
@@ -434,6 +589,8 @@ export function createDemoTransport(
         );
       }
       if (path[0] === "purge" && post) {
+        if (!can("admin"))
+          return fail("Only the Master Admin can purge records.", 403);
         const previous = state.candidates.length;
         const cutoff = clock() - 180 * 86400000;
         state.candidates = state.candidates.filter(

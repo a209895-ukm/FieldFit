@@ -57,6 +57,18 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { CAPS, LANGS, DEFAULT_RULES, csvCell } from "@/lib/assessment";
+import {
+  BLUEPRINTS,
+  BRAND,
+  JOB_ROLES,
+  LEVELS,
+  STAFF_ROLES,
+  WEIGHTS,
+  weightedScore,
+} from "@/lib/client-config";
+import { setSessionEmail } from "@/lib/session";
+import { UsersPanel } from "./users";
+import { BrandMark } from "./login";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
 import {
   communicationScore,
@@ -177,6 +189,8 @@ export default function Workspace() {
     [email, setEmail] = useState(""),
     [language, setLanguage] = useState("en"),
     [performance, setPerformance] = useState("high"),
+    [jobRole, setJobRole] = useState(JOB_ROLES[0].id),
+    [manager, setManager] = useState(""),
     [link, setLink] = useState(""),
     [busy, setBusy] = useState(false),
     [detailId, setDetailId] = useState<string | null>(null),
@@ -227,6 +241,11 @@ export default function Workspace() {
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
+  const role: string = workspace?.user?.role ?? "hr";
+  const isManager = role === "manager";
+  const managers: any[] = (workspace?.users ?? []).filter(
+    (u: any) => u.role === "manager",
+  );
   const candidates: any[] =
     mode === "sample" ? samples : (workspace?.candidates ?? []);
   const filtered = candidates.filter(
@@ -275,6 +294,8 @@ export default function Workspace() {
         email,
         language,
         kind,
+        role: jobRole,
+        manager: kind === "candidate" ? manager || null : null,
         performance: kind === "employee" ? performance : null,
       });
       setLink(assessmentUrl(r.path));
@@ -382,30 +403,37 @@ export default function Workspace() {
     Assessments: "Built for the realities of the field.",
     Benchmarks: "Your team sets the reference.",
     Administration: "One standard. Clearly defined.",
+    "Users & access": "The right access for every role.",
   };
+  const nav = [
+    [BarChart3, "Overview"],
+    [Users, "Candidates"],
+    [CalendarDays, "HR journey"],
+    [ClipboardList, "Assessments"],
+    [Layers3, "Benchmarks"],
+    [Settings2, "Administration"],
+    [ShieldCheck, "Users & access"],
+  ].filter(([, label]: any) =>
+    isManager
+      ? ["Overview", "Candidates", "Assessments"].includes(label)
+      : label !== "Users & access" || role === "admin",
+  );
+  useEffect(() => {
+    if (!nav.some(([, label]: any) => label === view)) setView("Overview");
+  }, [role]);
   return (
     <SidebarProvider>
       <Sidebar className="ff-sidebar">
         <SidebarHeader>
-          <a className="brand" href={pageUrl("/")}>
-            <span className="brand-mark">ff</span>FieldFit
-            <span className="brand-dot">.</span>
-          </a>
+          <BrandMark />
           <div className="workspace-label">
-            ACE SOLUTIONS <span>PILOT</span>
+            {BRAND.company.toUpperCase()} <span>PILOT</span>
           </div>
         </SidebarHeader>
         <SidebarContent>
           <div className="nav-label">WORKSPACE</div>
           <SidebarMenu>
-            {[
-              [BarChart3, "Overview"],
-              [Users, "Candidates"],
-              [CalendarDays, "HR journey"],
-              [ClipboardList, "Assessments"],
-              [Layers3, "Benchmarks"],
-              [Settings2, "Administration"],
-            ].map(([Icon, label]: any) => (
+            {nav.map(([Icon, label]: any) => (
               <SidebarMenuItem key={label}>
                 <SidebarMenuButton
                   isActive={view === label}
@@ -429,20 +457,27 @@ export default function Workspace() {
           </div>
         </SidebarContent>
         <SidebarFooter>
-          <a href={pageUrl("/")} className="help-link">
-            <Users size={17} /> Switch role
-          </a>
+          <button
+            className="help-link"
+            onClick={() => {
+              setSessionEmail(null);
+              window.location.assign(pageUrl("/login"));
+            }}
+          >
+            <Users size={17} /> Sign out
+          </button>
           <a href={pageUrl("/assess/demo")} className="help-link">
             <CircleHelp size={17} /> Try the candidate experience
           </a>
           <div className="account">
-            <span className="avatar">HR</span>
+            <span className="avatar">
+              {role === "admin" ? "MA" : role === "manager" ? "HM" : "HR"}
+            </span>
             <div>
-              <strong>{workspace?.user.name ?? "Hiring team"}</strong>
+              <strong>{workspace?.user?.name ?? "Hiring team"}</strong>
               <small>
-                {workspace?.user.role === "admin"
-                  ? "HR administrator"
-                  : "Hiring workspace"}
+                {STAFF_ROLES[role as keyof typeof STAFF_ROLES]?.label ??
+                  "Hiring workspace"}
               </small>
             </div>
           </div>
@@ -457,8 +492,9 @@ export default function Workspace() {
             <strong>{view}</strong>
           </div>
           <div className="top-actions">
-            <span className="pilot-dot" /> Pilot version{" "}
-            <span className="avatar small">HR</span>
+            <span className="pilot-dot" />{" "}
+            {STAFF_ROLES[role as keyof typeof STAFF_ROLES]?.label ?? "Pilot"}{" "}
+            · {workspace?.user?.email ?? ""}
           </div>
         </header>
         <main className="main">
@@ -467,13 +503,16 @@ export default function Workspace() {
               <div className="eyebrow">A CLEARER PICTURE OF POTENTIAL</div>
               <h1>{titles[view]}</h1>
               <p>
-                Follow the five steps from setting your standards to making a
-                confident hiring decision.
+                {isManager
+                  ? "You see the candidates assigned to you. Review their results and record your interview decision."
+                  : "Follow the five steps from setting your standards to making a confident hiring decision."}
               </p>
             </div>
-            <Button className="primary-button" onClick={() => openInvite()}>
-              <Plus size={17} /> Invite candidate
-            </Button>
+            {!isManager && (
+              <Button className="primary-button" onClick={() => openInvite()}>
+                <Plus size={17} /> Invite candidate
+              </Button>
+            )}
           </div>
           <div className="pilot-banner">
             <ShieldCheck size={17} />
@@ -695,7 +734,11 @@ export default function Workspace() {
                                 <small>
                                   {c.kind === "employee"
                                     ? "Benchmark employee"
-                                    : "Sales representative"}
+                                    : "Candidate"}
+                                  {c.roleTitle ? " · " + c.roleTitle : ""}
+                                  {c.managerName && !isManager
+                                    ? " · " + c.managerName
+                                    : ""}
                                 </small>
                               </span>
                             </button>
@@ -714,12 +757,22 @@ export default function Workspace() {
                             {c.scores.length ? (
                               <span className="score">
                                 {Math.round(
-                                  c.scores.reduce(
-                                    (a: number, b: number) => a + b,
-                                    0,
-                                  ) / 6,
+                                  c.level
+                                    ? weightedScore(c.scores, c.level)
+                                    : c.scores.reduce(
+                                        (a: number, b: number) => a + b,
+                                        0,
+                                      ) / 6,
                                 )}
                                 <small>/100</small>
+                                {c.flags?.length ? (
+                                  <span
+                                    className="tag core"
+                                    title="Answer scored as policy breach or fraud"
+                                  >
+                                    Integrity flag
+                                  </span>
+                                ) : null}
                               </span>
                             ) : (
                               <span className="muted">—</span>
@@ -820,6 +873,9 @@ export default function Workspace() {
               onInvite={openInvite}
             />
           )}{" "}
+          {view === "Users & access" && workspace && (
+            <UsersPanel workspace={workspace} onUpdate={load} />
+          )}
           {view === "Administration" &&
             (workspace ? (
               <Admin
@@ -842,8 +898,9 @@ export default function Workspace() {
                   </div>
                   <h2>Sales readiness assessment</h2>
                   <p>
-                    12 questions selected from an 18-item draft pool, plus one
-                    written customer conversation.
+                    Length and weighting depend on the job level of the role.
+                    Questions are drawn at random from the bank for each
+                    invitation.
                   </p>
                 </div>
                 <Button asChild>
@@ -853,10 +910,72 @@ export default function Workspace() {
                 </Button>
               </div>
               <div className="assessment-facts">
-                <span>{rules.minutes} minute limit</span>
                 <span>English · Bahasa Malaysia · 中文</span>
-                <span>Randomized question selection</span>
+                <span>Randomized questions and answer order</span>
+                <span>
+                  Tab-switch warnings: {rules.maxWarnings ?? 2}, then
+                  auto-submit
+                </span>
               </div>
+              <Table className="level-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Job level</TableHead>
+                    <TableHead>Job roles</TableHead>
+                    <TableHead>Assessment</TableHead>
+                    <TableHead>Bank coverage</TableHead>
+                    <TableHead>Weights NUM/LOG/SJT/PS/SLR/DDL</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {LEVELS.map((level) => {
+                    const bp = BLUEPRINTS[level];
+                    const bank = workspace?.settings?.questions ?? [];
+                    const own = (cap: number) =>
+                      bank.filter(
+                        (q: any) =>
+                          q.enabled &&
+                          q.cap === cap &&
+                          q.format !== "open" &&
+                          q.level === level,
+                      ).length;
+                    const have = bp.perCap.reduce(
+                      (n, want, cap) => n + Math.min(want, own(cap)),
+                      0,
+                    );
+                    const want = bp.perCap.reduce((a, b) => a + b, 0);
+                    return (
+                      <TableRow key={level}>
+                        <TableCell>
+                          <strong>{level}</strong>
+                        </TableCell>
+                        <TableCell className="muted">
+                          {JOB_ROLES.filter((r) => r.level === level)
+                            .map((r) => r.title.split(" (")[0])
+                            .join(", ")}
+                        </TableCell>
+                        <TableCell>{bp.note}</TableCell>
+                        <TableCell>
+                          <span className={have < want ? "tag core" : "tag"}>
+                            {have}/{want} level-specific
+                          </span>
+                          {have < want && (
+                            <small className="muted block">
+                              Topped up with general items until the full bank
+                              arrives
+                            </small>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {WEIGHTS[level]
+                            .map((w) => Math.round(w * 100) + "%")
+                            .join(" / ")}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
               <div className="assessment-caps">
                 {CAPS.map((cap, i) => (
                   <div className="panel padded" key={cap}>
@@ -880,10 +999,11 @@ export default function Workspace() {
                 ))}
               </div>
               <div className="notice">
-                Questions, score thresholds and translations are draft starting
-                points. Conversation scoring uses a fixed human rubric until an
-                AI service is connected. Time and tab-change signals support
-                review; they do not establish misconduct.
+                Client questions are in English; Bahasa Malaysia and Mandarin
+                versions are being translated and reviewed. Judgement items use
+                the client’s scoring (+1 / 0 / −0.5 / −1, and −2 for fraud).
+                Each question has its own time limit; a calculator is available
+                for numerical items.
               </div>
             </section>
           )}
@@ -988,6 +1108,34 @@ export default function Workspace() {
                   placeholder="candidate@example.com"
                 />
               </label>
+              <label className="form-label">Job role</label>
+              <Picker
+                value={jobRole}
+                onChange={setJobRole}
+                items={JOB_ROLES.map((r) => [r.id, `${r.title} · ${r.level}`])}
+                label="Job role"
+              />
+              <p className="muted small">
+                {
+                  BLUEPRINTS[
+                    JOB_ROLES.find((r) => r.id === jobRole)?.level ?? "Entry"
+                  ].note
+                }
+              </p>
+              {kind === "candidate" && (
+                <>
+                  <label className="form-label">Assign hiring manager</label>
+                  <Picker
+                    value={manager || "none"}
+                    onChange={(v: string) => setManager(v === "none" ? "" : v)}
+                    items={[
+                      ["none", "Not assigned yet"],
+                      ...managers.map((m) => [m.email, m.name]),
+                    ]}
+                    label="Hiring manager"
+                  />
+                </>
+              )}
               <label className="form-label">Preferred language</label>
               <Picker
                 value={language}

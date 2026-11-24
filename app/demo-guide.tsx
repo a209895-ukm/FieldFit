@@ -1,3 +1,4 @@
+import { DEFAULT_USERS, sessionEmail, setSessionEmail } from "@/lib/session";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -103,7 +104,7 @@ const COPY: Record<
   },
   calendar: {
     title: "Show the calendar handoff",
-    text: "Add to Google Calendar opens a prepared event for review and saving. Account connection is only a preview in this prototype; emails are not sent automatically.",
+    text: "Add to Outlook calendar opens a prepared event for review and saving. Live Outlook sync depends on the client's IT decision; emails are not sent automatically.",
     hint: "You can open the draft, or finish the walkthrough here.",
     target: "calendar",
     next: "Finish walkthrough",
@@ -223,6 +224,10 @@ export function DemoGuide({ path }: { path: string }) {
   }, [step, path, wrongPage]);
 
   function begin() {
+    // The walkthrough runs as the Master Admin so every HR step is available.
+    const email = sessionEmail();
+    if (!email || email.includes("manager"))
+      setSessionEmail(DEFAULT_USERS[0].email);
     startGuide();
     window.location.assign(pageUrl("/employer"));
   }

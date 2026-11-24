@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { pageUrl, STATIC_DEMO } from "@/lib/navigation";
-import { approvalOutcome, googleCalendarUrl } from "@/lib/approval";
+import {
+  approvalOutcome,
+  outlookCalendarUrl,
+  calendarFile,
+} from "@/lib/approval";
 import {
   CANDIDATE_STEPS,
   bookInterview,
@@ -311,17 +315,30 @@ export function CandidateOutcome({
               <Button asChild variant="outline">
                 <a
                   data-guide="calendar"
-                  href={googleCalendarUrl(c, invite)}
+                  href={outlookCalendarUrl(c, invite)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Add to Google Calendar
+                  Add to Outlook calendar
                 </a>
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  const url = URL.createObjectURL(calendarFile(c, invite));
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "fieldfit-interview.ics";
+                  a.click();
+                  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                }}
+              >
+                Download .ics
               </Button>
             </div>
           )}
           <p className="journey-muted">
-            Calendar opens a draft to review and save. Attendance confirmation
+            Outlook opens a draft event to review and save; the .ics file opens in the Outlook desktop app. Attendance confirmation
             is recorded in this demo.
           </p>
           <div className="journey-info">
