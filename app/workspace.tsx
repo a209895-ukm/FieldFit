@@ -73,6 +73,7 @@ import { Dashboard } from "./dashboard";
 import { Settings } from "./settings";
 import { Interviews } from "./interviews";
 import { QuestionBank } from "./question-bank";
+import { CandidatesPage } from "./staff-pages";
 import { BulkInvite } from "./bulk-invite";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
 import {
@@ -540,234 +541,15 @@ export default function Workspace() {
             />
           )}
           {view === "Candidates" && (
-            <>
-              <div>
-                <section className="panel candidates-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Candidate pipeline</h2>
-                      <p>One consistent view of every candidate.</p>
-                      <button
-                        className="text-link"
-                        onClick={() => setView("Interviews")}
-                      >
-                        Review and interviews →
-                      </button>
-                    </div>
-                    {(
-                      <div className="button-row">
-                        <Button
-                          variant="outline"
-                          disabled={selected.length < 2}
-                          onClick={() => setCompare(true)}
-                        >
-                          Compare ({selected.length})
-                        </Button>
-                        <Button
-                          variant="outline"
-                          disabled={
-                            busy ||
-                            (mode === "live" &&
-                              (!workspace || !candidates.length))
-                          }
-                          title={
-                            mode === "sample"
-                              ? "Download all illustrative sample candidates"
-                              : "Download all saved candidates"
-                          }
-                          onClick={exportCsv}
-                        >
-                          <Download size={14} /> Download CSV
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="table-toolbar">
-                    <label className="searchbox">
-                      <Search size={16} />
-                      <input
-                        aria-label="Search candidates"
-                        placeholder="Search candidates…"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                      />
-                    </label>
-                    <div className="toolbar-filters">
-                      <Picker
-                        label="Data source"
-                        value={mode}
-                        onChange={(v: string) => {
-                          setMode(v);
-                          setSelected([]);
-                        }}
-                        items={[
-                          ["sample", "Sample data"],
-                          ["live", "My candidates"],
-                        ]}
-                      />
-                      <Picker
-                        label="Filter status"
-                        value={status}
-                        onChange={setStatus}
-                        items={[
-                          "All statuses",
-                          "Invited",
-                          "In progress",
-                          "Completed",
-                        ]}
-                      />
-                    </div>
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {view === "Candidates" && (
-                          <TableHead>
-                            <span className="sr-only">Compare</span>
-                          </TableHead>
-                        )}
-                        <TableHead>Candidate</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Profile score</TableHead>
-                        <TableHead>Language</TableHead>
-                        <TableHead>
-                          <span className="sr-only">Open profile</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filtered.map((c, i) => (
-                        <TableRow key={c.id}>
-                          {view === "Candidates" && (
-                            <TableCell>
-                              <Checkbox
-                                aria-label={"Compare " + c.name}
-                                disabled={
-                                  !c.scores.length ||
-                                  (!selected.includes(c.id) &&
-                                    selected.length >= 3)
-                                }
-                                checked={selected.includes(c.id)}
-                                onCheckedChange={(v) =>
-                                  setSelected(
-                                    v
-                                      ? [...selected, c.id]
-                                      : selected.filter((id) => id !== c.id),
-                                  )
-                                }
-                              />
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            <button
-                              className="person"
-                              onClick={() => setDetailId(c.id)}
-                            >
-                              <span className={"avatar tone-" + (i % 5)}>
-                                {c.name
-                                  .split(" ")
-                                  .map((n: string) => n[0])
-                                  .slice(0, 2)
-                                  .join("")}
-                              </span>
-                              <span>
-                                <strong>{c.name}</strong>
-                                <small>
-                                  {c.kind === "employee"
-                                    ? "Benchmark employee"
-                                    : "Candidate"}
-                                  {c.roleTitle ? " · " + c.roleTitle : ""}
-                                  {c.managerName && !isManager
-                                    ? " · " + c.managerName
-                                    : ""}
-                                </small>
-                              </span>
-                            </button>
-                          </TableCell>
-                          <TableCell>
-                            <span
-                              className={
-                                "status " +
-                                c.status.toLowerCase().replace(" ", "-")
-                              }
-                            >
-                              {c.status}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {c.scores.length ? (
-                              <span className="score">
-                                {Math.round(
-                                  c.level
-                                    ? weightedScore(c.scores, c.level)
-                                    : c.scores.reduce(
-                                        (a: number, b: number) => a + b,
-                                        0,
-                                      ) / 6,
-                                )}
-                                <small>/100</small>
-                                {c.flags?.length ? (
-                                  <span
-                                    className="tag core"
-                                    title="Answer scored as policy breach or fraud"
-                                  >
-                                    Integrity flag
-                                  </span>
-                                ) : null}
-                              </span>
-                            ) : (
-                              <span className="muted">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="muted">
-                            {LANGS[c.language as keyof typeof LANGS]}
-                          </TableCell>
-                          <TableCell>
-                            <button
-                              aria-label={"Open " + c.name + " profile"}
-                              onClick={() => setDetailId(c.id)}
-                            >
-                              <ArrowUpRight size={17} />
-                            </button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {filtered.length === 0 && (
-                    <div className="empty-state">
-                      <Users />
-                      <h3>
-                        {loading
-                          ? "Loading your workspace…"
-                          : query
-                            ? "No matching candidates"
-                            : "Your next great hire starts with an invitation."}
-                      </h3>
-                      <p>
-                        {query
-                          ? "Try another name, email or status."
-                          : "Create a secure link to start your first assessment."}
-                      </p>
-                      {!query && (
-                        <Button onClick={() => openInvite()}>
-                          Invite candidate
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                  <div className="table-bottom">
-                    Showing {filtered.length} candidates{" "}
-                    <span>
-                      {mode === "sample"
-                        ? "Sample data"
-                        : "Saved workspace records"}
-                    </span>
-                  </div>
-                </section>
-
-              </div>
-            </>
+            <CandidatesPage
+              candidates={workspace?.candidates ?? []}
+              onOpen={setDetailId}
+              selected={selected}
+              setSelected={setSelected}
+              onCompare={() => setCompare(true)}
+              onExport={exportCsv}
+              busy={busy}
+            />
           )}
           {view === "Question bank" &&
             (workspace ? (
@@ -967,8 +749,8 @@ export default function Workspace() {
         <SheetContent className="detail-sheet">
           <SheetHeader>
             <SheetTitle>Candidate profile</SheetTitle>
-            <SheetDescription>
-              Evidence to inform a focused, human-led interview.
+            <SheetDescription className="sr-only">
+              Assessment results, evidence and decision
             </SheetDescription>
           </SheetHeader>
           {detail && (

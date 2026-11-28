@@ -360,8 +360,7 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           {c.flags.some((f: any) => f.severity === "Fraud")
             ? "fraud or falsifying data (−2.0)"
             : "a policy breach (−1.0)"}
-          : {c.flags.map((f: any) => f.id).join(", ")}. Probe this in the
-          interview; HR review is required.
+          : {c.flags.map((f: any) => f.id).join(", ")}.
         </div>
       ) : null}
       {c.autoSubmitted && (
@@ -375,13 +374,12 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           <div className="notice">
             {openItems.filter((q: any) => c.openMarks?.[q.id] === undefined)
               .length}{" "}
-            open-ended answer(s) await marking in Evidence. Their
-            capabilities are scored without them until marked.
+            open-ended answer(s) to mark in Evidence.
           </div>
         )}
       {sample && (
         <div className="notice">
-          Illustrative profile. Changes cannot be saved to sample candidates.
+          Sample profile · read only
         </div>
       )}
       {error && (
@@ -405,11 +403,6 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
             <>
               <RadarProfile candidates={[c]} benchmark={benchmark} />
               {comm && <CommunicationCard score={comm} />}
-              <div className="notice">
-                Question scores are provisional. Customer communication is
-                reported separately and does not change the profile score.
-                Benchmark ranges guide discussion, not pass/fail decisions.
-              </div>
               {summary.map((p) => (
                 <div className="profile-cap" key={p.cap}>
                   <div>
@@ -444,21 +437,12 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
                   </p>
                 </div>
               ))}
-              <div className="notice">
-                <ShieldCheck size={18} />
-                <div>
-                  <strong>Reliability review</strong>
-                  <p>
-                    {c.switches ?? 0} tab or window switches (
-                    {rules.maxWarnings ?? 2} warnings allowed before
-                    auto-submit).{" "}
-                    {elapsed !== null && elapsed < 180
-                      ? "Fast completion: discuss before interpreting scores."
-                      : "Timing and tab changes are context, not proof of misconduct."}{" "}
-                    Self-report responses require interview validation.
-                  </p>
-                </div>
-              </div>
+              <p className="profile-facts">
+                {c.switches ?? 0}/{rules.maxWarnings ?? 2} tab switches
+                {elapsed !== null &&
+                  ` · finished in ${Math.round(elapsed / 60)} min`}
+                {elapsed !== null && elapsed < 180 && " · unusually fast"}
+              </p>
             </>
           )}
         </TabsContent>
@@ -587,16 +571,9 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
                 ? "No transcript: the candidate's browser could not convert speech to text. Listen to the recording."
                 : "No conversation response submitted.")}
           </blockquote>
-          {voice && (
-            <p className="muted small">
-              Transcript produced by the candidate's browser and may contain
-              recognition errors. Mark what was said, not how it was
-              transcribed.
-            </p>
-          )}
           <div className="ai-compare">
             <div>
-              <span className="eyebrow">A · AI-SUGGESTED (PROTOTYPE)</span>
+              <span className="eyebrow">AI SUGGESTED</span>
               <strong>{ai.score}/100</strong>
               <small>
                 {RUBRIC.map((r, i) => `${ai.ratings[i]}`).join(" · ")} per
@@ -604,7 +581,7 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               </small>
             </div>
             <div>
-              <span className="eyebrow">B · YOUR MANUAL RUBRIC</span>
+              <span className="eyebrow">YOUR SCORE</span>
               <strong>{manualScore}/100</strong>
               <small>{ratings.join(" · ")} per criterion</small>
             </div>
@@ -617,10 +594,7 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               <small>Manual minus suggested</small>
             </div>
             <p className="muted small">
-              Simulated suggestion from the transcript (keyword check, runs in
-              this browser) so the team can test option a) vs b). The manual
-              score is the one that counts. A real AI model would replace this
-              after the pilot.
+              AI suggestion is a prototype; the manual score counts.
             </p>
             <button
               type="button"
@@ -630,10 +604,7 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
               Start from the suggested ratings
             </button>
           </div>
-          <p className="muted small">
-            Reply content · 0 = absent, 1 = weak, 2 = partial, 3 = effective, 4
-            = clear and specific.
-          </p>
+          <p className="muted small">0 absent · 1 weak · 2 partial · 3 effective · 4 clear</p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -662,12 +633,8 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
             {voice && (
               <div className="delivery-review">
                 <h4>Delivery</h4>
-                <p className="muted">
-                  Listen to the recording. Pace and fluency are suggested from
-                  it (pace band:{" "}
-                  {PACE_NOTE[c.language as keyof typeof LANGS] ?? PACE_NOTE.en};
-                  2 marks off per silence over 3 s). Never mark accent, voice
-                  tone, confidence or minor grammar.
+                <p className="muted small">
+                  Pace band {PACE_NOTE[c.language as keyof typeof LANGS] ?? PACE_NOTE.en}. Don’t mark accent or tone.
                 </p>
                 <label className="rubric-row">
                   <span>
@@ -740,11 +707,7 @@ export function Detail({ candidate: c, benchmark, onUpdate, onLink }: any) {
           )}
         </TabsContent>
         <TabsContent value="decision">
-          <h3 className="section-title">A human decision, with a reason.</h3>
-          <p className="muted">
-            Use the profile to focus your interview. Assessment scores alone
-            should not determine a hiring outcome.
-          </p>
+          <h3 className="section-title">Decision</h3>
           <form
             onSubmit={(e) => {
               e.preventDefault();
