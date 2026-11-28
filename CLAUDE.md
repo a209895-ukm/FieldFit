@@ -11,6 +11,11 @@ Started as the Kabel DXP challenge entry; now a 10-week client project (Nov 2026
 
 ## Current focus (from Week 4)
 
+Progress on the clean-up (28 Nov): new sign-in, Dashboard, invite pop-up (manual or file upload), Interviews board,
+Settings and Question bank are done. Still to do: Candidates page and the candidate profile panel, then the
+candidate-side screens. Start guide is hidden (`SHOW_GUIDE` in `app/main.tsx`). Run locally with `npm run dev:pages`.
+
+
 **Clean up and simplify the prototype.** It has too many screens, buttons, banners and notices. It feels
 complicated for HR staff and for candidates, many of whom take the test on a phone in Bahasa Malaysia.
 
@@ -124,8 +129,13 @@ Key files:
 | --- | --- |
 | `app/main.tsx` | Router |
 | `app/welcome.tsx`, `app/login.tsx` | Entry pages, staff sign-in, `BrandMark` |
-| `app/workspace.tsx` | Staff shell: sidebar, views, invite dialog, compare |
-| `app/approvals.tsx` | 5-step HR journey (rules, invite, review, schedule, decide) |
+| `app/workspace.tsx` | Staff shell: sidebar (Dashboard, Candidates, Interviews, Question bank, Settings), invite dialog, compare |
+| `app/dashboard.tsx` | Dashboard: stats, latest candidates, by job role, hiring managers |
+| `app/bulk-invite.tsx`, `lib/candidate-import.ts` | Invite by CSV/TXT upload |
+| `app/interviews.tsx` | Interviews board: To review → Waiting to book → Scheduled → Decide |
+| `app/settings.tsx`, `app/hiring-rules.tsx` | Settings tabs; hiring rules with flow preview and confirm-to-save |
+| `app/question-bank.tsx` | Question bank list, side-panel editor, retire, Excel import + template (`public/question-bank-template.xlsx`) |
+| `app/approvals.tsx` | Old 5-step HR journey; now only used for Settings → Interview availability |
 | `app/panels.tsx` | Candidate profile sheet (`Detail`), `Benchmarks`, `Admin` (rules, question bank, privacy, audit) |
 | `app/users.tsx` | Master Admin user management |
 | `app/assess/[token]/runner.tsx` | Candidate assessment (timers, tab-switch, open-ended, calculator) |

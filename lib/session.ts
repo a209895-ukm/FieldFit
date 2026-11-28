@@ -7,8 +7,7 @@ export const SESSION_KEY = "fieldfit-pages-session-v1";
 export const DEFAULT_USERS: StaffUser[] = [
   { email: "admin@company.example", name: "Demo Master Admin", role: "admin" },
   { email: "hr@company.example", name: "Demo HR Officer", role: "hr" },
-  { email: "gt.manager@company.example", name: "Demo Hiring Manager (GT)", role: "manager" },
-  { email: "mt.manager@company.example", name: "Demo Hiring Manager (MT)", role: "manager" },
+  { email: "manager@company.example", name: "Demo Hiring Manager", role: "manager" },
 ];
 
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;

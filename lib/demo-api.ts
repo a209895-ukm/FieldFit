@@ -59,7 +59,11 @@ export function createDemoTransport(
     if (raw) {
       const state: DemoState = JSON.parse(raw);
       state.settings = upgradeSettings(state.settings, QUESTIONS);
-      state.users ??= structuredClone(DEFAULT_USERS);
+      state.users ??= [];
+      // Demo accounts always exist, even in browsers that saved older records.
+      for (const u of DEFAULT_USERS)
+        if (!state.users.some((x) => x.email === u.email))
+          state.users.push(structuredClone(u));
       return state;
     }
     return {

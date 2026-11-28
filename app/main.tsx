@@ -6,6 +6,8 @@ import Assessment from "./assess/[token]/runner";
 import { Welcome, EmployeePortal } from "./welcome";
 import { currentRoute, pageUrl, STATIC_DEMO } from "@/lib/navigation";
 import "./globals.css";
+
+const SHOW_GUIDE = false;
 import { DemoGuide } from "./demo-guide";
 import { StaffLogin } from "./login";
 import { sessionEmail } from "@/lib/session";
@@ -23,8 +25,9 @@ function App() {
   const assessment = path.match(/^\/assess\/(demo|[a-f0-9]{64})\/?$/);
   return (
     <>
-      <Toaster theme="light" />
-      {STATIC_DEMO && <DemoGuide path={path} />}
+      <Toaster theme="light" position="top-center" />
+      {/* Start guide hidden while the screens are being redesigned. */}
+      {SHOW_GUIDE && <DemoGuide path={path} />}
       {STATIC_DEMO && path !== "/" && (
         <div className="demo-banner">
           Interactive demo · Records stay in this browser. Use fictional

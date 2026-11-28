@@ -24,6 +24,10 @@ await writeFile(
   await readFile(resolve(built, "index.html")),
 );
 await cp(resolve(built, "favicon.svg"), resolve(root, "favicon.svg"));
+await cp(
+  resolve(built, "question-bank-template.xlsx"),
+  resolve(root, "question-bank-template.xlsx"),
+);
 await writeFile(resolve(root, ".nojekyll"), "");
 console.log(
   "GitHub Pages files prepared in the repository root. Commit them with the source changes.",

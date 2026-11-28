@@ -69,6 +69,11 @@ import {
 import { setSessionEmail } from "@/lib/session";
 import { UsersPanel } from "./users";
 import { BrandMark } from "./login";
+import { Dashboard } from "./dashboard";
+import { Settings } from "./settings";
+import { Interviews } from "./interviews";
+import { QuestionBank } from "./question-bank";
+import { BulkInvite } from "./bulk-invite";
 import { api, Picker, Detail, Benchmarks, Admin, RadarProfile } from "./panels";
 import {
   communicationScore,
@@ -176,7 +181,9 @@ const samples = [
 import { advanceGuide, useGuide } from "./demo-guide-state";
 export default function Workspace() {
   const guide = useGuide();
-  const [view, setView] = useState("HR journey"),
+  const [view, setView] = useState("Dashboard"),
+    [settingsTab, setSettingsTab] = useState("hiring"),
+    [method, setMethod] = useState("manual"),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("All statuses"),
     [workspace, setWorkspace] = useState<any>(null),
@@ -204,7 +211,7 @@ export default function Workspace() {
         guide.step,
       )
     ) {
-      setView("HR journey");
+      setView("Settings");
       setMode("live");
     }
     if (guide.step === "rules") setInvite(false);
@@ -397,7 +404,7 @@ export default function Workspace() {
     }
   }
   const titles: Record<string, string> = {
-    Overview: "Your next great hire starts here.",
+    Dashboard: "Dashboard",
     Candidates: "Potential, with evidence to back it.",
     "HR journey": "Your hiring journey, step by step.",
     Assessments: "Built for the realities of the field.",
@@ -406,20 +413,16 @@ export default function Workspace() {
     "Users & access": "The right access for every role.",
   };
   const nav = [
-    [BarChart3, "Overview"],
+    [BarChart3, "Dashboard"],
     [Users, "Candidates"],
-    [CalendarDays, "HR journey"],
-    [ClipboardList, "Assessments"],
-    [Layers3, "Benchmarks"],
-    [Settings2, "Administration"],
-    [ShieldCheck, "Users & access"],
+    [CalendarDays, "Interviews"],
+    [ClipboardList, "Question bank"],
+    [Settings2, "Settings"],
   ].filter(([, label]: any) =>
-    isManager
-      ? ["Overview", "Candidates", "Assessments"].includes(label)
-      : label !== "Users & access" || role === "admin",
+    isManager ? ["Dashboard", "Candidates", "Interviews"].includes(label) : true,
   );
   useEffect(() => {
-    if (!nav.some(([, label]: any) => label === view)) setView("Overview");
+    if (!nav.some(([, label]: any) => label === view)) setView("Dashboard");
   }, [role]);
   return (
     <SidebarProvider>
@@ -437,7 +440,10 @@ export default function Workspace() {
               <SidebarMenuItem key={label}>
                 <SidebarMenuButton
                   isActive={view === label}
-                  onClick={() => setView(label)}
+                  onClick={() => {
+                    setSettingsTab("hiring");
+                    setView(label);
+                  }}
                 >
                   <Icon />
                   <span>{label}</span>
@@ -446,15 +452,7 @@ export default function Workspace() {
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
-          <div className="sidebar-note">
-            <ShieldCheck size={22} />
-            <h3>Evidence. Then a decision.</h3>
-            <p>
-              Consistent assessments.
-              <br />
-              Human-led hiring.
-            </p>
-          </div>
+
         </SidebarContent>
         <SidebarFooter>
           <button
@@ -466,9 +464,7 @@ export default function Workspace() {
           >
             <Users size={17} /> Sign out
           </button>
-          <a href={pageUrl("/assess/demo")} className="help-link">
-            <CircleHelp size={17} /> Try the candidate experience
-          </a>
+
           <div className="account">
             <span className="avatar">
               {role === "admin" ? "MA" : role === "manager" ? "HM" : "HR"}
@@ -498,33 +494,14 @@ export default function Workspace() {
           </div>
         </header>
         <main className="main">
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">A CLEARER PICTURE OF POTENTIAL</div>
-              <h1>{titles[view]}</h1>
-              <p>
-                {isManager
-                  ? "You see the candidates assigned to you. Review their results and record your interview decision."
-                  : "Follow the five steps from setting your standards to making a confident hiring decision."}
-              </p>
-            </div>
-            {!isManager && (
+          <div className="page-bar">
+            <h1>{view}</h1>
+            {/* Settings holds configuration only, so no invite action there. */}
+            {!isManager && view !== "Settings" && (
               <Button className="primary-button" onClick={() => openInvite()}>
-                <Plus size={17} /> Invite candidate
+                <Plus size={16} /> Invite candidates
               </Button>
             )}
-          </div>
-          <div className="pilot-banner">
-            <ShieldCheck size={17} />
-            <span>
-              <strong>Your pilot, at a glance.</strong>{" "}
-              {mode === "sample"
-                ? "Sample profiles and reference benchmarks are illustrative."
-                : "Draft questions and translations. Human decisions, always."}
-            </span>
-            <span className="text-link">
-              Built for fairer hiring <ArrowUpRight size={15} />
-            </span>
           </div>
           {error && (
             <div className="error" role="alert">
@@ -534,66 +511,37 @@ export default function Workspace() {
               </Button>
             </div>
           )}
-          {view === "HR journey" && (
-            <Approvals
-              key={mode}
-              candidates={candidates}
-              sample={mode === "sample"}
-              onProfile={setDetailId}
+          {view === "Dashboard" && (
+            <Dashboard
+              candidates={workspace?.candidates ?? []}
+              users={workspace?.users ?? []}
+              canInvite={!isManager}
               onInvite={() => openInvite()}
-              sourceControl={
-                <div className="journey-source">
-                  <Picker
-                    label="Journey data source"
-                    value={mode}
-                    onChange={setMode}
-                    items={[
-                      ["live", "My candidates"],
-                      ["sample", "Sample profiles"],
-                    ]}
-                  />
-                  <Button variant="outline" onClick={() => load()}>
-                    <RefreshCw size={14} /> Refresh
-                  </Button>
-                </div>
-              }
+              onViewAll={() => {
+                setMode("live");
+                setView("Candidates");
+              }}
+              onOpen={(id: string) => {
+                setMode("live");
+                setView("Candidates");
+                setDetailId(id);
+              }}
             />
           )}
-          {["Overview", "Candidates"].includes(view) && (
+          {view === "Interviews" && (
+            <Interviews
+              candidates={workspace?.candidates ?? []}
+              role={role}
+              onProfile={setDetailId}
+              onSettings={() => {
+                setSettingsTab("availability");
+                setView("Settings");
+              }}
+            />
+          )}
+          {view === "Candidates" && (
             <>
-              <div className="stats">
-                <Stat
-                  label="Total candidates"
-                  value={candidates.length}
-                  note={
-                    mode === "sample"
-                      ? "Illustrative sample profiles"
-                      : "Candidates and benchmark staff"
-                  }
-                  icon={Users}
-                />
-                <Stat
-                  label="Assessments completed"
-                  value={completed.length}
-                  note={`${candidates.length ? Math.round((completed.length / candidates.length) * 100) : 0}% completion rate`}
-                  icon={CheckCircle2}
-                />
-                <Stat
-                  label="In progress"
-                  value={
-                    candidates.filter((c) => c.status === "In progress").length
-                  }
-                  note="Assessments currently underway"
-                  icon={ClipboardList}
-                />
-                <Stat
-                  label="Ready for review"
-                  value={completed.filter((c) => !c.decision).length}
-                  note="Evidence ready for your interview"
-                  icon={BarChart3}
-                />
-              </div>
-              <div className={view === "Overview" ? "content-grid" : ""}>
+              <div>
                 <section className="panel candidates-panel">
                   <div className="panel-heading">
                     <div>
@@ -601,19 +549,12 @@ export default function Workspace() {
                       <p>One consistent view of every candidate.</p>
                       <button
                         className="text-link"
-                        onClick={() => setView("HR journey")}
+                        onClick={() => setView("Interviews")}
                       >
-                        Manage approvals & interviews →
+                        Review and interviews →
                       </button>
                     </div>
-                    {view === "Overview" ? (
-                      <Button
-                        variant="ghost"
-                        onClick={() => setView("Candidates")}
-                      >
-                        View all <ArrowRight size={15} />
-                      </Button>
-                    ) : (
+                    {(
                       <div className="button-row">
                         <Button
                           variant="outline"
@@ -824,226 +765,52 @@ export default function Workspace() {
                     </span>
                   </div>
                 </section>
-                {view === "Overview" && (
-                  <section className="panel capability-panel">
-                    <div className="panel-heading">
-                      <div>
-                        <div className="eyebrow">THE FIELDFIT FRAMEWORK</div>
-                        <h2>
-                          Six capabilities.
-                          <br />
-                          One shared standard.
-                        </h2>
-                      </div>
-                      <span className="mini-mark">✳</span>
-                    </div>
-                    <p className="muted">
-                      Designed for the realities of a modern field sales team.
-                    </p>
-                    <div className="capability-list">
-                      {CAPS.map((c, i) => (
-                        <div key={c}>
-                          <span className="cap-number">0{i + 1}</span>
-                          <strong>{c}</strong>
-                          <span
-                            className={
-                              "tag " + (rules.core.includes(i) ? "core" : "")
-                            }
-                          >
-                            {rules.core.includes(i) ? "Core" : "Trainable"}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="framework-foot">
-                      <ShieldCheck size={17} />
-                      <span>
-                        Role-specific evidence, always backed by a human
-                        decision.
-                      </span>
-                    </div>
-                  </section>
-                )}
+
               </div>
             </>
           )}
-          {view === "Benchmarks" && (
-            <Benchmarks
-              candidates={workspace?.candidates ?? []}
-              onInvite={openInvite}
-            />
-          )}{" "}
-          {view === "Users & access" && workspace && (
-            <UsersPanel workspace={workspace} onUpdate={load} />
-          )}
-          {view === "Administration" &&
+          {view === "Question bank" &&
             (workspace ? (
-              <Admin
-                key={workspace.settings.rules.version}
+              <QuestionBank workspace={workspace} onUpdate={load} />
+            ) : (
+              <p className="muted">Loading…</p>
+            ))}
+          {view === "Settings" &&
+            (workspace ? (
+              <Settings
+                key={settingsTab}
+                initialTab={settingsTab}
                 workspace={workspace}
+                candidates={workspace.candidates ?? []}
                 onUpdate={load}
+                onInvite={openInvite}
+                onProfile={setDetailId}
               />
             ) : (
-              <section className="panel padded">
-                <p>Your workspace is loading.</p>
-                <Button onClick={() => load()}>Retry</Button>
-              </section>
+              <p className="muted">Loading…</p>
             ))}
-          {view === "Assessments" && (
-            <section className="panel padded">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow">
-                    FRONT-LINE SALES · VERSION {rules.version}
-                  </div>
-                  <h2>Sales readiness assessment</h2>
-                  <p>
-                    Length and weighting depend on the job level of the role.
-                    Questions are drawn at random from the bank for each
-                    invitation.
-                  </p>
-                </div>
-                <Button asChild>
-                  <a href={pageUrl("/assess/demo")}>
-                    Try assessment <ArrowUpRight size={16} />
-                  </a>
-                </Button>
-              </div>
-              <div className="assessment-facts">
-                <span>English · Bahasa Malaysia · 中文</span>
-                <span>Randomized questions and answer order</span>
-                <span>
-                  Tab-switch warnings: {rules.maxWarnings ?? 2}, then
-                  auto-submit
-                </span>
-              </div>
-              <Table className="level-table">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Job level</TableHead>
-                    <TableHead>Job roles</TableHead>
-                    <TableHead>Assessment</TableHead>
-                    <TableHead>Bank coverage</TableHead>
-                    <TableHead>Weights NUM/LOG/SJT/PS/SLR/DDL</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {LEVELS.map((level) => {
-                    const bp = BLUEPRINTS[level];
-                    const bank = workspace?.settings?.questions ?? [];
-                    const own = (cap: number) =>
-                      bank.filter(
-                        (q: any) =>
-                          q.enabled &&
-                          q.cap === cap &&
-                          q.format !== "open" &&
-                          q.level === level,
-                      ).length;
-                    const have = bp.perCap.reduce(
-                      (n, want, cap) => n + Math.min(want, own(cap)),
-                      0,
-                    );
-                    const want = bp.perCap.reduce((a, b) => a + b, 0);
-                    return (
-                      <TableRow key={level}>
-                        <TableCell>
-                          <strong>{level}</strong>
-                        </TableCell>
-                        <TableCell className="muted">
-                          {JOB_ROLES.filter((r) => r.level === level)
-                            .map((r) => r.title.split(" (")[0])
-                            .join(", ")}
-                        </TableCell>
-                        <TableCell>{bp.note}</TableCell>
-                        <TableCell>
-                          <span className={have < want ? "tag core" : "tag"}>
-                            {have}/{want} level-specific
-                          </span>
-                          {have < want && (
-                            <small className="muted block">
-                              Topped up with general items until the full bank
-                              arrives
-                            </small>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {WEIGHTS[level]
-                            .map((w) => Math.round(w * 100) + "%")
-                            .join(" / ")}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-              <div className="assessment-caps">
-                {CAPS.map((cap, i) => (
-                  <div className="panel padded" key={cap}>
-                    <span className="eyebrow">
-                      0{i + 1} · {rules.core.includes(i) ? "CORE" : "TRAINABLE"}
-                    </span>
-                    <h3>{cap}</h3>
-                    <p>
-                      {
-                        [
-                          "Discounts, commission and interpreting sales figures.",
-                          "Rules, sequencing and sound conclusions.",
-                          "Customer objections, trust and ethical decisions.",
-                          "Unfamiliar situations and missing information.",
-                          "Planning, learning and follow-through (self-report).",
-                          "CRM accuracy and acting on dashboard data.",
-                        ][i]
-                      }
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <div className="notice">
-                Client questions are in English; Bahasa Malaysia and Mandarin
-                versions are being translated and reviewed. Judgement items use
-                the client’s scoring (+1 / 0 / −0.5 / −1, and −2 for fraud).
-                Each question has its own time limit; a calculator is available
-                for numerical items.
-              </div>
-            </section>
-          )}
-          <section className="next-step">
-            <div className="next-icon">
-              <ClipboardList />
-            </div>
-            <div>
-              <h3>A better interview begins with better evidence.</h3>
-              <p>
-                Explore the candidate experience in English, Bahasa Malaysia, or
-                Mandarin.
-              </p>
-            </div>
-            <Button asChild variant="outline">
-              <a href={pageUrl("/assess/demo")}>
-                Preview assessment <ArrowUpRight size={16} />
-              </a>
-            </Button>
-          </section>
-          <footer>
-            FIELDFIT <span>Every candidate, measured the same way.</span>
-            <span className="footer-right">Kabel DXP · Pilot workspace</span>
-          </footer>
+
         </main>
       </div>
       <Dialog open={invite} onOpenChange={setInvite}>
-        <DialogContent className={guide ? "demo-guide-dialog" : undefined}>
+        <DialogContent
+          className={
+            (guide ? "demo-guide-dialog " : "") +
+            (method === "upload" && !link ? "invite-wide" : "")
+          }
+        >
           <DialogHeader>
             <DialogTitle>
               {link
                 ? "Your invitation is ready."
                 : kind === "employee"
                   ? "Invite a benchmark employee"
-                  : "Invite a candidate"}
+                  : "Invite candidates"}
             </DialogTitle>
             <DialogDescription>
               {link
                 ? "Copy this link and send it through your preferred channel. It expires in 7 days and opens one assessment session."
-                : "Create a secure assessment link. No email is sent automatically."}
+                : "Each candidate gets a personal assessment link. Emails are not sent automatically."}
             </DialogDescription>
           </DialogHeader>
           {inviteError && (
@@ -1051,7 +818,30 @@ export default function Workspace() {
               {inviteError}
             </div>
           )}
-          {link ? (
+          {!link && kind === "candidate" && (
+            <>
+              <label className="form-label">How do you want to add candidates?</label>
+              <Picker
+                label="Invite method"
+                value={method}
+                onChange={setMethod}
+                items={[
+                  ["manual", "Enter one candidate manually"],
+                  ["upload", "Upload a file (CSV or TXT)"],
+                ]}
+              />
+            </>
+          )}
+          {!link && kind === "candidate" && method === "upload" ? (
+            <BulkInvite
+              managers={managers}
+              defaults={{ role: jobRole, language: "en", manager: "" }}
+              onDone={() => {
+                setMode("live");
+                return load();
+              }}
+            />
+          ) : link ? (
             <>
               <label className="form-label">
                 Assessment link

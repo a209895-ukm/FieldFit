@@ -951,7 +951,8 @@ export function Benchmarks({ candidates, onInvite }: any) {
     </section>
   );
 }
-export function Admin({ workspace: w, onUpdate }: any) {
+/** section shows one part only: "rules", "questions", "team" (data and privacy) or "audit". */
+export function Admin({ workspace: w, onUpdate, section }: any) {
   const [settings, setSettings] = useState(() => structuredClone(w.settings)),
     [selected, setSelected] = useState(0),
     [levelFilter, setLevelFilter] = useState("All"),
@@ -1049,21 +1050,23 @@ export function Admin({ workspace: w, onUpdate }: any) {
     });
   }
   return (
-    <section className="panel padded">
+    <section className={section ? "settings-section" : "panel padded"}>
       {error && (
         <div className="error" role="alert">
           {error}
         </div>
       )}
-      <Tabs defaultValue="rules">
-        <TabsList>
-          <TabsTrigger value="rules">Scoring rules</TabsTrigger>
-          <TabsTrigger value="questions">Question bank</TabsTrigger>
-          <TabsTrigger value="team">Workspace & privacy</TabsTrigger>
-          <TabsTrigger value="audit">Audit trail</TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue={section ?? "rules"} value={section}>
+        {!section && (
+          <TabsList>
+            <TabsTrigger value="rules">Scoring rules</TabsTrigger>
+            <TabsTrigger value="questions">Question bank</TabsTrigger>
+            <TabsTrigger value="team">Workspace & privacy</TabsTrigger>
+            <TabsTrigger value="audit">Audit trail</TabsTrigger>
+          </TabsList>
+        )}
         <TabsContent value="rules">
-          <h2 className="section-title">A consistent scoring standard</h2>
+          <h2 className="section-title">Scoring rules</h2>
           <p className="muted">
             Draft rules · version {w.settings.rules.version}. Changes apply to
             new invitations; existing assessments keep their original version.
@@ -1313,7 +1316,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
             first, or building inside the client’s Microsoft 365 / SharePoint.
             This demo keeps everything in the browser.
           </p>
-          <h2 className="section-title">Your browser workspace</h2>
+          <h2 className="section-title">Demo data</h2>
           <p className="muted">
             {STATIC_DEMO
               ? "No account is needed. Demo records are stored only in this browser. Clearing site data removes them; another browser starts fresh. Demo invitations work only in the browser that created them. Use fictional details."
@@ -1358,7 +1361,7 @@ export function Admin({ workspace: w, onUpdate }: any) {
           </div>
         </TabsContent>
         <TabsContent value="audit">
-          <h2 className="section-title">Trace every important action.</h2>
+          <h2 className="section-title">Audit trail</h2>
           <p className="muted">
             Latest 80 events. Includes invitations, submissions, rule changes,
             reviews, decisions and exports.

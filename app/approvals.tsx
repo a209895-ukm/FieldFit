@@ -60,16 +60,23 @@ export function Approvals({
   onProfile,
   onInvite,
   sourceControl,
+  mode = "full",
+  part,
 }: {
   candidates: JourneyCandidate[];
   sample: boolean;
   onProfile: (id: string) => void;
   onInvite: () => void;
   sourceControl?: ReactNode;
+  /** setup = rules and interview availability only (Settings); pipeline = review, schedule and decide. */
+  mode?: "full" | "setup" | "pipeline";
+  /** In setup mode, show only the progression rules or only interview availability. */
+  part?: "rules" | "availability";
 }) {
   const guide = useGuide();
   const [state, update] = useJourney(sample, candidates);
-  const [stage, setStage] = useState(0),
+  const first = mode === "pipeline" ? 2 : 0;
+  const [stage, setStage] = useState(first),
     [filter, setFilter] = useState("all"),
     [search, setSearch] = useState(""),
     [selected, setSelected] = useState<string[]>([]),
@@ -218,20 +225,26 @@ export function Approvals({
     <div className="journey-stage-footer">
       <Button
         variant="outline"
-        disabled={stage === 0}
+        disabled={stage === first}
         onClick={() => setStage(stage - 1)}
       >
         <ArrowLeft size={16} /> Previous step
       </Button>
-      <span>Step {stage + 1} of 5</span>
+      <span>
+        Step {stage + 1 - first} of {5 - first}
+      </span>
       <Button disabled={stage === 4} onClick={() => setStage(stage + 1)}>
         Next: {HR_STEPS[stage + 1]}
         <ArrowRight size={16} />
       </Button>
     </div>
   );
+  const steps = HR_STEPS.slice(first);
   return (
-    <div className="hr-journey">
+    <div className={"hr-journey hr-" + mode}>
+      {mode !== "setup" && (
+        <>
+      {mode === "full" && (
       <div className="journey-toolbar">
         <span className="journey-tag">
           <ShieldCheck size={14} />{" "}
@@ -239,20 +252,18 @@ export function Approvals({
         </span>
         {sourceControl}
       </div>
+      )}
       <JourneySteps
-        steps={HR_STEPS}
-        active={stage}
+        steps={steps}
+        active={stage - first}
         onStep={(i) => {
-          setStage(i);
+          setStage(i + first);
           setSelected([]);
         }}
-        complete={stageDone}
+        complete={stageDone.filter((i) => i >= first).map((i) => i - first)}
       />
       <div className="journey-stage-heading">
         <div>
-          <span className="eyebrow">
-            HR JOURNEY · STEP {String(stage + 1).padStart(2, "0")}
-          </span>
           <h2>{STAGE_COPY[stage][0]}</h2>
           <p>{STAGE_COPY[stage][1]}</p>
         </div>
@@ -260,9 +271,12 @@ export function Approvals({
           {state.rules.automatic ? "Automatic progression" : "HR approval"}
         </span>
       </div>
-      {stage === 0 && (
+        </>
+      )}
+      {(mode === "setup" || (mode === "full" && stage === 0)) && (
         <>
-          <div className="journey-two-columns">
+          <div className={part ? "journey-one-column" : "journey-two-columns"}>
+            {part !== "availability" && (
             <section className="journey-panel">
               <h3>
                 <Zap size={20} /> Progression rules
@@ -339,6 +353,8 @@ export function Approvals({
                 separately.
               </p>
             </section>
+            )}
+            {part !== "rules" && (
             <section className="journey-panel">
               <h3>
                 <CalendarDays size={20} /> Interview availability
@@ -453,18 +469,21 @@ export function Approvals({
                 Use demo availability
               </Button>
             </section>
+            )}
           </div>
+          {part !== "rules" && (
           <div className={ready ? "journey-ready" : "journey-info"}>
             {ready ? <CheckCircle2 size={20} /> : <Clock3 size={20} />}
             <span>
               {ready
-                ? "Your setup is ready. Continue to Invite candidates."
+                ? "Setup complete. Candidates who pass can book these interview slots."
                 : "Add an HR email and at least one future slot to activate interview invitations."}
             </span>
           </div>
+          )}
         </>
       )}
-      {stage === 1 && (
+      {mode === "full" && stage === 1 && (
         <section className="journey-panel">
           <div className="journey-section-heading">
             <div>
@@ -529,7 +548,7 @@ export function Approvals({
           )}
         </section>
       )}
-      {stage === 2 && (
+      {mode !== "setup" && stage === 2 && (
         <>
           <div className="journey-metrics">
             {[
@@ -612,12 +631,11 @@ export function Approvals({
                     ? "Your interview invitations are in Schedule interview."
                     : "Completed profiles will appear here for review."}
                 </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setStage(invited.length ? 3 : 1)}
-                >
-                  {invited.length ? "View invitations" : "View candidates"}
-                </Button>
+                {invited.length > 0 && (
+                  <Button variant="outline" onClick={() => setStage(3)}>
+                    View invitations
+                  </Button>
+                )}
               </div>
             ) : (
               visible.map((c) => {
@@ -720,7 +738,7 @@ export function Approvals({
           </section>
         </>
       )}
-      {stage === 3 && (
+      {mode !== "setup" && stage === 3 && (
         <>
           <div className="journey-metrics">
             {[
@@ -795,8 +813,9 @@ export function Approvals({
                         variant="ghost"
                         onClick={() => {
                           if (!ready) {
-                            setStage(0);
-                            toast.error("Add future slots first.");
+                            toast.error(
+                              "Add future interview slots in Settings → Hiring rules first.",
+                            );
                             return;
                           }
                           mutate((s) => ({
@@ -838,7 +857,7 @@ export function Approvals({
           )}
         </>
       )}
-      {stage === 4 && (
+      {mode !== "setup" && stage === 4 && (
         <>
           <div className="journey-info">
             <ShieldCheck />
@@ -939,7 +958,7 @@ export function Approvals({
           )}
         </>
       )}
-      {bottom}
+      {mode !== "setup" && bottom}
       {action && (
         <Dialog
           open={true}
@@ -985,7 +1004,7 @@ export function Approvals({
                   <br />
                   {ready
                     ? "Candidate chooses their preferred time."
-                    : "Complete interview availability in Set the rules first."}
+                    : "Add interview slots in Settings → Hiring rules first."}
                 </span>
               </div>
             )}

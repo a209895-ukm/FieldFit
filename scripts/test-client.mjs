@@ -21,6 +21,9 @@ const workspace = async () => (await request("/api/workspace")).json();
 as = "nobody@company.example";
 assert.equal((await request("/api/workspace")).status, 401);
 
+// A second hiring manager, added by the Master Admin.
+as = "admin@company.example";
+await post("users", { email: "mt.manager@company.example", name: "MT Manager", role: "manager" });
 // HR invites; job role sets the blueprint.
 as = "hr@company.example";
 const invite = async (role, manager) =>
@@ -36,9 +39,9 @@ const invite = async (role, manager) =>
       })
     ).json()
   ).path.split("/").at(-1);
-const dsr = await invite("dsr", "gt.manager@company.example");
+const dsr = await invite("dsr", "manager@company.example");
 const se = await invite("se", "mt.manager@company.example");
-const asm = await invite("asm", "gt.manager@company.example");
+const asm = await invite("asm", "manager@company.example");
 const get = async (t) => (await request("/api/assessment/" + t)).json();
 const e = await get(dsr),
   j = await get(se),
@@ -60,7 +63,7 @@ assert.ok(!e.questions.some((q) => q.level && q.level !== "Entry"));
 assert.equal(e.roleTitle, "Sales Representative (DSR) - GT");
 
 // Hiring managers see only their assigned candidates and cannot invite.
-as = "gt.manager@company.example";
+as = "manager@company.example";
 let w = await workspace();
 assert.deepEqual(
   w.candidates.map((c) => c.role).sort(),
@@ -112,7 +115,7 @@ assert.equal(
 );
 const asmRecord = (await workspace()).candidates.find((c) => c.role === "asm");
 const openIds = Object.keys(written);
-as = "gt.manager@company.example";
+as = "manager@company.example";
 assert.equal(
   (await post(`candidates/${asmRecord.id}/open-review`, { marks: { [openIds[0]]: 100 } })).status,
   200,
